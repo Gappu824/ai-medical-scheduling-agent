@@ -69,23 +69,23 @@ class DatabaseManager:
         )
         """)
         
-        # Reminders table
         cursor.execute("""
-        CREATE TABLE IF NOT EXISTS reminders (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            appointment_id TEXT NOT NULL,
-            reminder_type TEXT NOT NULL,
-            scheduled_time TEXT NOT NULL,
-            sent BOOLEAN DEFAULT FALSE,
-            response TEXT,
-            sent_at TIMESTAMP,
-            delivery_status TEXT DEFAULT 'pending',
-            channel TEXT DEFAULT 'email',
-            priority TEXT DEFAULT 'normal',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (appointment_id) REFERENCES appointments (id)
-        )
-        """)
+CREATE TABLE IF NOT EXISTS reminders (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    appointment_id TEXT NOT NULL,
+    reminder_type TEXT NOT NULL CHECK(reminder_type IN ('initial', 'form_check', 'final_confirmation')),
+    scheduled_time TEXT NOT NULL,
+    sent BOOLEAN DEFAULT FALSE,
+    email_sent BOOLEAN DEFAULT FALSE,
+    sms_sent BOOLEAN DEFAULT FALSE,
+    response_received BOOLEAN DEFAULT FALSE,
+    response_data TEXT,
+    attempts INTEGER DEFAULT 0,
+    last_attempt TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (appointment_id) REFERENCES appointments (id)
+)
+""")
         
         conn.commit()
         conn.close()

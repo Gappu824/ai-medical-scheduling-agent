@@ -1,51 +1,51 @@
 patient_id,first_name,last_name,dob,phone,email,patient_type,insurance_carrier,member_id,group_number,emergency_contact_name,emergency_contact_phone,emergency_contact_relationship
-P001,John,Smith,1980-01-18,555-1000,john.smith0@email.com,returning,Cigna,M534400,G3406,Emergency Contact 0,555-2000,Parent
-P002,Jane,Johnson,1950-07-25,555-1001,jane.johnson1@email.com,returning,BlueCross BlueShield,M311011,G9282,Emergency Contact 1,555-2001,Friend
-P003,Mike,Williams,1959-12-23,555-1002,mike.williams2@email.com,returning,Humana,M610884,G9831,Emergency Contact 2,555-2002,Friend
-P004,Sarah,Brown,2000-06-20,555-1003,sarah.brown3@email.com,new,Kaiser Permanente,M181561,G7276,Emergency Contact 3,555-2003,Friend
-P005,David,Jones,1965-01-24,555-1004,david.jones4@email.com,new,UnitedHealthcare,M156596,G6136,Emergency Contact 4,555-2004,Child
-P006,Lisa,Garcia,1961-04-24,555-1005,lisa.garcia5@email.com,returning,Aetna,M646777,G3094,Emergency Contact 5,555-2005,Spouse
-P007,Mark,Miller,1999-05-04,555-1006,mark.miller6@email.com,returning,Humana,M908364,G2642,Emergency Contact 6,555-2006,Sibling
-P008,Anna,Davis,1966-02-26,555-1007,anna.davis7@email.com,returning,Kaiser Permanente,M663910,G3733,Emergency Contact 7,555-2007,Child
-P009,Chris,Rodriguez,1960-05-22,555-1008,chris.rodriguez8@email.com,returning,UnitedHealthcare,M931948,G8106,Emergency Contact 8,555-2008,Child
-P010,Maria,Martinez,1953-01-21,555-1009,maria.martinez9@email.com,returning,Humana,M516529,G2531,Emergency Contact 9,555-2009,Child
-P011,John,Smith,1975-10-13,555-1010,john.smith10@email.com,returning,Humana,M854275,G8461,Emergency Contact 10,555-2010,Friend
-P012,Jane,Johnson,1992-03-23,555-1011,jane.johnson11@email.com,returning,Aetna,M150514,G3066,Emergency Contact 11,555-2011,Partner
-P013,Mike,Williams,1994-09-10,555-1012,mike.williams12@email.com,returning,Humana,M215954,G3107,Emergency Contact 12,555-2012,Sibling
-P014,Sarah,Brown,1963-05-08,555-1013,sarah.brown13@email.com,returning,Aetna,M813284,G4010,Emergency Contact 13,555-2013,Sibling
-P015,David,Jones,1993-10-23,555-1014,david.jones14@email.com,returning,UnitedHealthcare,M156972,G4094,Emergency Contact 14,555-2014,Friend
-P016,Lisa,Garcia,1978-11-24,555-1015,lisa.garcia15@email.com,returning,BlueCross BlueShield,M436577,G8066,Emergency Contact 15,555-2015,Sibling
-P017,Mark,Miller,1977-10-28,555-1016,mark.miller16@email.com,returning,BlueCross BlueShield,M469534,G6628,Emergency Contact 16,555-2016,Sibling
-P018,Anna,Davis,1955-11-09,555-1017,anna.davis17@email.com,returning,Humana,M757575,G4374,Emergency Contact 17,555-2017,Sibling
-P019,Chris,Rodriguez,1971-06-26,555-1018,chris.rodriguez18@email.com,returning,Humana,M674298,G5799,Emergency Contact 18,555-2018,Sibling
-P020,Maria,Martinez,1966-08-25,555-1019,maria.martinez19@email.com,new,Humana,M762424,G5960,Emergency Contact 19,555-2019,Spouse
-P021,John,Smith,1968-01-26,555-1020,john.smith20@email.com,returning,Cigna,M492426,G5482,Emergency Contact 20,555-2020,Partner
-P022,Jane,Johnson,1960-04-18,555-1021,jane.johnson21@email.com,returning,Kaiser Permanente,M968050,G4359,Emergency Contact 21,555-2021,Parent
-P023,Mike,Williams,1963-02-05,555-1022,mike.williams22@email.com,new,UnitedHealthcare,M410024,G9504,Emergency Contact 22,555-2022,Child
-P024,Sarah,Brown,1966-01-23,555-1023,sarah.brown23@email.com,returning,Aetna,M497985,G6770,Emergency Contact 23,555-2023,Child
-P025,David,Jones,1969-11-11,555-1024,david.jones24@email.com,new,Cigna,M169635,G4179,Emergency Contact 24,555-2024,Sibling
-P026,Lisa,Garcia,1969-03-16,555-1025,lisa.garcia25@email.com,returning,Kaiser Permanente,M775887,G6898,Emergency Contact 25,555-2025,Sibling
-P027,Mark,Miller,1964-10-28,555-1026,mark.miller26@email.com,returning,UnitedHealthcare,M732191,G1049,Emergency Contact 26,555-2026,Spouse
-P028,Anna,Davis,1984-06-09,555-1027,anna.davis27@email.com,new,Aetna,M257677,G1660,Emergency Contact 27,555-2027,Parent
-P029,Chris,Rodriguez,1993-04-08,555-1028,chris.rodriguez28@email.com,returning,UnitedHealthcare,M832718,G6934,Emergency Contact 28,555-2028,Spouse
-P030,Maria,Martinez,1993-06-09,555-1029,maria.martinez29@email.com,returning,BlueCross BlueShield,M471437,G8053,Emergency Contact 29,555-2029,Sibling
-P031,John,Smith,1983-10-23,555-1030,john.smith30@email.com,new,UnitedHealthcare,M853184,G3901,Emergency Contact 30,555-2030,Sibling
-P032,Jane,Johnson,1962-02-28,555-1031,jane.johnson31@email.com,returning,Humana,M819245,G5012,Emergency Contact 31,555-2031,Partner
-P033,Mike,Williams,1981-04-13,555-1032,mike.williams32@email.com,returning,Humana,M476942,G8665,Emergency Contact 32,555-2032,Child
-P034,Sarah,Brown,1990-01-25,555-1033,sarah.brown33@email.com,new,Aetna,M947036,G3214,Emergency Contact 33,555-2033,Child
-P035,David,Jones,1966-07-16,555-1034,david.jones34@email.com,new,UnitedHealthcare,M178663,G6629,Emergency Contact 34,555-2034,Child
-P036,Lisa,Garcia,1976-03-07,555-1035,lisa.garcia35@email.com,returning,Aetna,M164280,G1086,Emergency Contact 35,555-2035,Parent
-P037,Mark,Miller,1989-09-23,555-1036,mark.miller36@email.com,returning,Cigna,M298502,G9258,Emergency Contact 36,555-2036,Friend
-P038,Anna,Davis,1962-12-18,555-1037,anna.davis37@email.com,new,Aetna,M227220,G4556,Emergency Contact 37,555-2037,Parent
-P039,Chris,Rodriguez,1952-03-01,555-1038,chris.rodriguez38@email.com,returning,Cigna,M529032,G7434,Emergency Contact 38,555-2038,Child
-P040,Maria,Martinez,1992-12-22,555-1039,maria.martinez39@email.com,returning,Humana,M507680,G2732,Emergency Contact 39,555-2039,Partner
-P041,John,Smith,1969-12-06,555-1040,john.smith40@email.com,returning,Humana,M437452,G6207,Emergency Contact 40,555-2040,Spouse
-P042,Jane,Johnson,1954-04-18,555-1041,jane.johnson41@email.com,returning,Humana,M791703,G5932,Emergency Contact 41,555-2041,Partner
-P043,Mike,Williams,1990-04-04,555-1042,mike.williams42@email.com,returning,Humana,M187541,G9093,Emergency Contact 42,555-2042,Child
-P044,Sarah,Brown,1974-04-11,555-1043,sarah.brown43@email.com,returning,BlueCross BlueShield,M397591,G5458,Emergency Contact 43,555-2043,Friend
-P045,David,Jones,1970-07-10,555-1044,david.jones44@email.com,new,UnitedHealthcare,M370714,G5140,Emergency Contact 44,555-2044,Child
-P046,Lisa,Garcia,1986-06-16,555-1045,lisa.garcia45@email.com,returning,Cigna,M287052,G5981,Emergency Contact 45,555-2045,Parent
-P047,Mark,Miller,1990-08-18,555-1046,mark.miller46@email.com,new,BlueCross BlueShield,M996172,G7169,Emergency Contact 46,555-2046,Parent
-P048,Anna,Davis,1959-07-20,555-1047,anna.davis47@email.com,new,Kaiser Permanente,M726922,G7270,Emergency Contact 47,555-2047,Spouse
-P049,Chris,Rodriguez,1962-05-26,555-1048,chris.rodriguez48@email.com,new,Humana,M334052,G5663,Emergency Contact 48,555-2048,Child
-P050,Maria,Martinez,1995-04-12,555-1049,maria.martinez49@email.com,new,Kaiser Permanente,M119871,G5385,Emergency Contact 49,555-2049,Sibling
+P001,Kathleen,Zuniga,1986-07-29,325.239.4887,kathleen.zuniga0@email.com,returning,Aetna,M455718,G4192,Stephanie Travis,947.346.4062,Spouse
+P002,Patricia,Jones,2002-09-19,913.537.6764,patricia.jones1@email.com,new,Aetna,M836780,G9094,Rebekah Hernandez MD,(298)219-932,Sibling
+P003,Michelle,Blair,1958-12-12,367.707.6919,michelle.blair2@email.com,new,BlueCross BlueShield,M791252,G1508,Catherine Thomas,+1-248-751-4,Parent
+P004,Allen,Coleman,1985-11-15,001-653-648-,allen.coleman3@email.com,new,Humana,M156526,G7489,Christy Stewart,687-482-1677,Friend
+P005,Michael,Santiago,1956-01-27,737-853-4896,michael.santiago4@email.com,returning,UnitedHealthcare,M111901,G3337,Morgan Black,(345)255-790,Child
+P006,Rachel,Ward,1994-03-13,4898901512,rachel.ward5@email.com,returning,Cigna,M875352,G1949,Crystal Phillips,+1-200-566-0,Sibling
+P007,Michael,Collins,1947-06-12,(491)765-977,michael.collins6@email.com,new,Aetna,M881309,G3788,Jessica Gonzalez,001-319-382-,Spouse
+P008,Kimberly,Bowman,1966-10-10,951-678-4344,kimberly.bowman7@email.com,new,Cigna,M132502,G7175,Bailey Griffin,(532)900-187,Friend
+P009,Dylan,Martinez,1952-08-24,001-727-968-,dylan.martinez8@email.com,returning,BlueCross BlueShield,M467191,G4730,James Mcintyre,+1-509-333-2,Spouse
+P010,Jonathan,Cruz,1971-08-18,493-745-0636,jonathan.cruz9@email.com,new,Aetna,M357796,G5551,James Moore,3565072820,Partner
+P011,Alison,Luna,1972-11-29,798-368-5828,alison.luna10@email.com,returning,Kaiser Permanente,M181547,G3707,Justin Walters,6714659769,Parent
+P012,Heather,Terrell,1989-10-07,(539)858-792,heather.terrell11@email.com,new,Aetna,M887358,G8866,Miss Sarah Carrillo,287.993.4428,Sibling
+P013,Vanessa,Ingram,2002-06-04,(616)357-171,vanessa.ingram12@email.com,returning,Cigna,M203154,G6565,Rhonda Martinez,(557)780-785,Partner
+P014,Karen,Thomas,2001-03-20,001-912-208-,karen.thomas13@email.com,returning,UnitedHealthcare,M112470,G9892,James Swanson III,496-781-6606,Sibling
+P015,Kyle,Weaver,2001-05-12,(601)922-726,kyle.weaver14@email.com,returning,UnitedHealthcare,M112428,G1883,Alexander Moreno,590-756-6351,Friend
+P016,David,Mcbride,1959-11-10,851.861.3298,david.mcbride15@email.com,returning,BlueCross BlueShield,M928577,G5050,Jennifer Cooley,(480)576-566,Spouse
+P017,Joseph,Jordan,1993-03-14,+1-804-647-5,joseph.jordan16@email.com,returning,Aetna,M805037,G9678,Michael Lawrence,+1-331-750-8,Friend
+P018,Jenna,Baldwin,2005-09-28,3143130682,jenna.baldwin17@email.com,new,Kaiser Permanente,M717991,G1565,Alice Barrera,424.877.1521,Parent
+P019,Andrew,Smith,1991-07-01,001-729-883-,andrew.smith18@email.com,returning,UnitedHealthcare,M819517,G7677,Mitchell Powell,(848)594-704,Spouse
+P020,Martha,Santana,1946-12-13,001-729-314-,martha.santana19@email.com,new,Aetna,M644375,G2474,Angela Taylor,001-355-887-,Child
+P021,Diane,Phillips,1951-09-03,371.960.0652,diane.phillips20@email.com,returning,UnitedHealthcare,M991268,G2715,Anthony Stark,+1-738-787-6,Partner
+P022,Katie,Silva,1976-04-04,+1-984-648-4,katie.silva21@email.com,returning,Aetna,M912678,G9880,Philip Lee,907.981.2325,Sibling
+P023,Christina,Herrera,1952-12-07,282-523-1346,christina.herrera22@email.com,returning,Kaiser Permanente,M641868,G2851,Heather Phillips,(313)461-311,Sibling
+P024,Jonathan,Simpson,1994-11-27,001-507-538-,jonathan.simpson23@email.com,returning,Cigna,M430142,G8109,Kayla Morris,267.746.6974,Parent
+P025,Gregory,Mahoney,1955-03-03,001-687-996-,gregory.mahoney24@email.com,returning,UnitedHealthcare,M480942,G3362,Jessica Wood,+1-868-215-1,Parent
+P026,Sandra,Thompson,1946-07-05,001-319-631-,sandra.thompson25@email.com,returning,UnitedHealthcare,M178682,G7798,Scott Joseph,001-499-431-,Parent
+P027,Alejandro,Howard,1987-12-15,496.438.1466,alejandro.howard26@email.com,new,UnitedHealthcare,M387039,G4611,Matthew Soto,976-259-3154,Spouse
+P028,Lauren,Cruz,1945-09-11,001-502-861-,lauren.cruz27@email.com,returning,BlueCross BlueShield,M678946,G1997,Matthew Brown,+1-528-723-4,Spouse
+P029,Toni,Powers,1996-03-09,001-629-902-,toni.powers28@email.com,returning,BlueCross BlueShield,M899804,G7933,Mr. Thomas Curtis,(409)795-976,Friend
+P030,Courtney,Clark,1974-08-02,866-793-0336,courtney.clark29@email.com,returning,UnitedHealthcare,M487189,G3958,Leah Miller,+1-415-844-8,Friend
+P031,Alicia,Blackwell,1994-11-15,001-846-993-,alicia.blackwell30@email.com,returning,BlueCross BlueShield,M975217,G5991,Debra Lewis,520.671.5620,Friend
+P032,Javier,Peters,1959-08-10,773.395.1104,javier.peters31@email.com,returning,Aetna,M656631,G7452,Scott Cooper,001-895-389-,Partner
+P033,Leon,Velez,1976-10-01,+1-332-598-6,leon.velez32@email.com,returning,Aetna,M567370,G8094,Carmen Vance,(306)567-746,Sibling
+P034,Edward,Shannon,1993-05-31,754-609-8138,edward.shannon33@email.com,returning,Humana,M581173,G4287,Donald Arias,001-436-362-,Friend
+P035,Austin,Wang,1962-12-30,504.440.7870,austin.wang34@email.com,returning,BlueCross BlueShield,M568035,G6572,Russell Holmes,362-940-4070,Friend
+P036,Bradley,Adkins,1995-08-03,636-802-9827,bradley.adkins35@email.com,returning,Aetna,M148040,G9017,Ronald Garcia,001-778-315-,Partner
+P037,David,Graham,2002-10-13,+1-474-593-4,david.graham36@email.com,returning,Aetna,M155193,G8193,Matthew Sanders,985.399.9143,Spouse
+P038,Richard,Garrett,1985-02-09,(633)605-535,richard.garrett37@email.com,returning,Aetna,M335383,G4618,Ronald Olson,519-955-3203,Partner
+P039,Charles,Cervantes,1967-01-24,499-581-4097,charles.cervantes38@email.com,returning,Humana,M422905,G8349,Amanda Arias,001-328-239-,Parent
+P040,Yesenia,Arroyo,1976-03-20,(552)703-776,yesenia.arroyo39@email.com,returning,UnitedHealthcare,M355759,G8970,Seth Schultz,673.502.0775,Child
+P041,Michael,Butler,1998-04-29,871-761-5085,michael.butler40@email.com,new,BlueCross BlueShield,M159120,G3963,Tanya Barton DDS,260-272-8792,Spouse
+P042,Angela,Hull,2002-04-15,+1-318-836-3,angela.hull41@email.com,new,BlueCross BlueShield,M236682,G6509,Todd Yates,916-635-9188,Child
+P043,Lori,Elliott,1987-07-25,+1-537-502-7,lori.elliott42@email.com,new,Cigna,M251401,G8617,Gregory Brown,933.545.3498,Sibling
+P044,Tyrone,Meza,1964-06-10,001-972-813-,tyrone.meza43@email.com,returning,Humana,M822944,G3576,Kerry Williams,(544)330-869,Partner
+P045,James,Garrett,1945-12-29,001-610-536-,james.garrett44@email.com,new,Cigna,M826525,G4802,Dr. Mary Golden DDS,001-916-512-,Friend
+P046,Michael,Gonzales,1969-06-30,495-982-3527,michael.gonzales45@email.com,returning,Humana,M687565,G7878,Nicole Barber,295-853-6437,Sibling
+P047,Claudia,Sanchez,1957-11-06,818.929.0611,claudia.sanchez46@email.com,returning,Aetna,M993780,G7174,Joel Bullock,001-474-238-,Parent
+P048,Sherry,Jones,1968-04-08,+1-708-393-1,sherry.jones47@email.com,returning,Cigna,M358004,G6294,Nicole Pena,(879)661-546,Friend
+P049,Jordan,Gomez,1991-06-25,619.744.3033,jordan.gomez48@email.com,returning,Humana,M259643,G5654,Tammy Tapia,593-506-4232,Parent
+P050,Kimberly,Sosa,1972-02-09,+1-421-928-9,kimberly.sosa49@email.com,returning,Aetna,M898082,G6810,Ryan Castillo,207.741.8074,Child

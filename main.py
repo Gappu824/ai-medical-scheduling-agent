@@ -371,7 +371,7 @@ def run_production_tests():
         
         # Test AI agent
         try:
-            from agents.medical_agent import ProductionMedicalAgent
+            from agents.medical_agent import EnhancedMedicalSchedulingAgent
             agent = ProductionMedicalAgent()
             test_response = agent.process_message("Hello", "test_session")
             if test_response and len(test_response) > 10:
@@ -470,7 +470,7 @@ def show_production_status():
     }
     
     try:
-        from agents.medical_agent import ProductionMedicalAgent
+        from agents.medical_agent import EnhancedMedicalSchedulingAgent
         services["AI Agent"] = True
     except ImportError:
         pass
