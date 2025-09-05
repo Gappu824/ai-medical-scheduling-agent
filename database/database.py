@@ -1,11 +1,12 @@
 """
-Database Manager for Medical Scheduling Agent
+Database Manager for Medical Scheduling Agent - Fixed Syntax
 RagaAI Assignment - Complete SQLite Database Operations
 """
 
 import sqlite3
 import logging
 import csv
+import json
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, List, Dict
