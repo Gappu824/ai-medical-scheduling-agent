@@ -92,7 +92,7 @@ class PreferenceMatchingAgent:
     
     def __init__(self):
         self.llm = ChatGoogleGenerativeAI(
-            model="gemini-pro",
+            model="gemini-1.5-flash",
             temperature=0.2,  # Slightly higher for more conversational responses
             max_tokens=1024
         )
