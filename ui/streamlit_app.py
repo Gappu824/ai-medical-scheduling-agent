@@ -70,12 +70,13 @@ services = st.session_state.services
 # ... (Sidebar remains largely the same but will now reflect true API key status)
 
 # Main interface tabs
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "💬 Chat Interface", 
     "📊 Live Monitoring", 
     "📋 Admin Panel",
     "🧪 Feature Testing",
-    "📈 System Analytics"
+    "📈 System Analytics",
+    "⏰ Reminders"
 ])
 
 with tab1:
@@ -231,3 +232,21 @@ with tab5:
 
     except Exception as e:
         st.error(f"Analytics error: {e}")
+with tab6:
+    st.header("⏰ Scheduled Reminders")
+    st.markdown("View all upcoming and sent reminders.")
+
+    if st.button("🔄 Refresh Reminders"):
+        st.rerun()
+
+    try:
+        conn = sqlite3.connect("medical_scheduling.db")
+        reminders_df = pd.read_sql("SELECT * FROM reminders ORDER BY scheduled_time DESC", conn)
+        conn.close()
+
+        if not reminders_df.empty:
+            st.dataframe(reminders_df, use_container_width=True)
+        else:
+            st.info("No reminders scheduled yet. Book an appointment to create reminders.")
+    except Exception as e:
+        st.error(f"Error loading reminders: {e}")        

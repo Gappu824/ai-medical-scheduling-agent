@@ -28,16 +28,17 @@ class Patient:
     first_name: str
     last_name: str
     dob: str
-    phone: str
-    email: str
     patient_type: PatientType
+    phone: Optional[str] = None
+    email: Optional[str] = None
     insurance_carrier: Optional[str] = None
     member_id: Optional[str] = None
     group_number: Optional[str] = None
     emergency_contact_name: Optional[str] = None
     emergency_contact_phone: Optional[str] = None
     emergency_contact_relationship: Optional[str] = None
-    
+    created_at: Optional[str] = None # FIX: Added to match database
+
     @property
     def full_name(self) -> str:
         return f"{self.first_name} {self.last_name}"
@@ -58,14 +59,21 @@ class Appointment:
     duration: int
     status: AppointmentStatus
     notes: Optional[str] = None
+    created_at: Optional[str] = None # FIX: Added to match database
     
     @property
     def date_str(self) -> str:
-        return self.appointment_datetime.strftime("%Y-%m-%d")
+        dt = self.appointment_datetime
+        if isinstance(dt, str):
+            dt = datetime.fromisoformat(dt)
+        return dt.strftime("%Y-%m-%d")
     
     @property
     def time_str(self) -> str:
-        return self.appointment_datetime.strftime("%H:%M")
+        dt = self.appointment_datetime
+        if isinstance(dt, str):
+            dt = datetime.fromisoformat(dt)
+        return dt.strftime("%H:%M")
 
 @dataclass
 class Reminder:
@@ -75,45 +83,3 @@ class Reminder:
     reminder_type: str
     scheduled_time: datetime
     sent: bool = False
-    response: Optional[str] = None
-    sent_at: Optional[datetime] = None
-
-# Available doctors and locations
-AVAILABLE_DOCTORS = [
-    {
-        "id": "dr_johnson",
-        "name": "Dr. Sarah Johnson",
-        "specialty": "Allergist/Immunologist",
-        "locations": ["Main Clinic", "Downtown Branch"]
-    },
-    {
-        "id": "dr_chen", 
-        "name": "Dr. Michael Chen",
-        "specialty": "Pulmonologist",
-        "locations": ["Main Clinic", "Suburban Office"]
-    },
-    {
-        "id": "dr_rodriguez",
-        "name": "Dr. Emily Rodriguez", 
-        "specialty": "Immunologist",
-        "locations": ["Main Clinic", "Downtown Branch", "Suburban Office"]
-    }
-]
-
-CLINIC_LOCATIONS = [
-    {
-        "name": "Main Clinic",
-        "address": "456 Healthcare Boulevard, Suite 300",
-        "features": "Full diagnostic lab, allergy testing suite, parking available"
-    },
-    {
-        "name": "Downtown Branch",
-        "address": "789 Medical Center Drive, Suite 150", 
-        "features": "Convenient downtown location, public transport access"
-    },
-    {
-        "name": "Suburban Office",
-        "address": "321 Wellness Plaza, Suite 200",
-        "features": "Quiet suburban setting, easy parking, family-friendly"
-    }
-]

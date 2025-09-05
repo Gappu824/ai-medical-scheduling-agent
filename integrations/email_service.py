@@ -37,7 +37,17 @@ class EmailService:
             html_content=html_content
         )
         
-        # ... (attachment logic remains the same)
+        if attachment_path and attachment_path.exists():
+            with open(attachment_path, 'rb') as f:
+                data = f.read()
+            encoded_file = base64.b64encode(data).decode()
+            attachedFile = Attachment(
+                FileContent(encoded_file),
+                FileName(attachment_path.name),
+                FileType('application/pdf'),
+                Disposition('attachment')
+            )
+            message.attachment = attachedFile
 
         try:
             response = self.sg.send(message)
@@ -46,18 +56,25 @@ class EmailService:
                 return True
             else:
                 logger.error(f"❌ Failed to send email to {to_email}. Status: {response.status_code}, Body: {response.body}")
-                if response.status_code == 403:
-                    logger.error("="*50)
-                    logger.error("TROUBLESHOOTING 403 FORBIDDEN ERROR:")
-                    logger.error("1. VERIFY API KEY: Ensure your SENDGRID_API_KEY in the .env file is correct.")
-                    logger.error("2. CHECK PERMISSIONS: In SendGrid, ensure your API key has FULL ACCESS to 'Mail Send'.")
-                    logger.error(f"3. VERIFY SENDER: Make sure the 'FROM_EMAIL' ('{self.from_email}') is a verified Single Sender in your SendGrid account.")
-                    logger.error("="*50)
                 return False
         except Exception as e:
             logger.error(f"❌ Exception while sending email to {to_email}: {e}")
             return False
 
-    # ... (the rest of your email service methods remain the same)
+    def send_intake_forms(self, patient_data: Dict, appointment_data: Dict) -> bool:
+        """Sends the new patient intake form."""
+        to_email = patient_data.get('email')
+        if not to_email:
+            return False
+            
+        subject = "Your New Patient Intake Form from MediCare"
+        html_content = f"""
+        <h1>Welcome to MediCare, {patient_data.get('first_name')}!</h1>
+        <p>Please find your new patient intake form attached. To ensure a smooth check-in process, please complete and return it to us at your earliest convenience.</p>
+        <p>Your appointment is scheduled for {appointment_data.get('appointment_datetime')}.</p>
+        """
+        attachment_path = Path("forms/patient_intake_form.pdf")
+        return self._send_email(to_email, subject, html_content, attachment_path)
+
     def _log_email_demo(self, to_email: str, subject: str, content: str, attachment: Optional[Path]):
         logger.info(f"DEMO EMAIL to {to_email}: {subject}")
