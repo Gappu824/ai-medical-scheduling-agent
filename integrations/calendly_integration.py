@@ -1,114 +1,97 @@
 """
-Fixed Calendly Integration - All Issues Resolved
+Database-Backed Calendly Integration for Persistent State
+RagaAI Assignment - Solves booking failures by using a reliable DB backend.
 """
 
 import logging
-import pandas as pd
-from datetime import datetime, timedelta
-from pathlib import Path
-from typing import List, Dict, Optional
+import sqlite3
+from datetime import datetime
+from typing import Dict, Optional
+
+try:
+    from database.database import DatabaseManager
+except ImportError:
+    import sys
+    from pathlib import Path
+    sys.path.append(str(Path(__file__).parent.parent))
+    from database.database import DatabaseManager
 
 logger = logging.getLogger(__name__)
 
 class CalendlyIntegration:
-    """Fixed calendar integration with proper datetime handling"""
+    """
+    A mock Calendly integration that uses the application's SQLite database
+    for persistent storage of appointment availability.
+    """
     
-    def __init__(self, schedules_file: str = "data/doctor_schedules.xlsx"):
-        self.schedules_path = Path(schedules_file)
-        self.schedules_df = None
-        self._load_schedules()
+    def __init__(self):
+        # We don't need a full DB manager instance here, just the path to the DB.
+        self.db_path = "medical_scheduling.db"
+        logger.info("Database-backed CalendlyIntegration initialized.")
 
-    def _load_schedules(self):
-        """Load doctor schedules from Excel file"""
-        try:
-            if not self.schedules_path.exists():
-                logger.error(f"Schedules file not found: {self.schedules_path}")
-                self.schedules_df = pd.DataFrame()
-                return
-
-            self.schedules_df = pd.read_excel(self.schedules_path, sheet_name='All_Schedules')
-            self.schedules_df['datetime'] = pd.to_datetime(self.schedules_df['datetime'])
-            self.schedules_df['available'] = self.schedules_df['available'].astype(bool)
-            logger.info("Successfully loaded doctor schedules")
-
-        except Exception as e:
-            logger.error(f"Failed to load schedules: {e}")
-            self.schedules_df = pd.DataFrame()
-
-    def get_available_slots(self, doctor: str, date: datetime, duration: int) -> List[datetime]:
-        """Get available slots for a doctor on a specific date"""
-        if self.schedules_df is None or self.schedules_df.empty:
-            return []
-
-        # Convert date to datetime if it's a date object
-        if not isinstance(date, datetime):
-            check_date = datetime.combine(date, datetime.min.time())
-        else:
-            check_date = date
-        
-        day_start = check_date.replace(hour=0, minute=0, second=0, microsecond=0)
-        day_end = day_start + timedelta(days=1)
-        
-        mask = (
-            (self.schedules_df['doctor_name'] == doctor) &
-            (self.schedules_df['datetime'] >= day_start) &
-            (self.schedules_df['datetime'] < day_end) &
-            (self.schedules_df['available'] == True) &
-            (self.schedules_df['duration_available'] >= duration)
-        )
-        
-        available_slots_df = self.schedules_df[mask]
-        return sorted(available_slots_df['datetime'].tolist())
+    def _get_db_conn(self):
+        """Creates a new connection for this module's use."""
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        return conn
 
     def get_earliest_slot(self, doctor: str, start_after: datetime) -> Optional[datetime]:
-        """Find the earliest available slot for a doctor from a given time."""
-        if self.schedules_df is None or self.schedules_df.empty:
+        """Finds the earliest available slot for a doctor from the database."""
+        conn = self._get_db_conn()
+        try:
+            query = """
+                SELECT datetime FROM doctor_schedules
+                WHERE doctor_name = ? AND datetime > ? AND available = 1
+                ORDER BY datetime ASC
+                LIMIT 1
+            """
+            row = conn.execute(query, (doctor, start_after.isoformat())).fetchone()
+            if row:
+                return datetime.fromisoformat(row['datetime'])
             return None
-
-        mask = (
-            (self.schedules_df['doctor_name'] == doctor) &
-            (self.schedules_df['datetime'] > start_after) &
-            (self.schedules_df['available'] == True)
-        )
-        
-        earliest_slots = self.schedules_df[mask].sort_values(by='datetime').head(1)
-        
-        if not earliest_slots.empty:
-            return earliest_slots.iloc[0]['datetime']
-        
-        return None
+        finally:
+            conn.close()
 
     def book_appointment(self, doctor: str, appointment_time: datetime, patient_data: Dict, duration: int) -> Optional[Dict]:
-        """Book an appointment"""
-        if self.schedules_df is None:
-            return None
-
-        slot_index = self.schedules_df[
-            (self.schedules_df['datetime'] == appointment_time) &
-            (self.schedules_df['doctor_name'] == doctor)
-        ].index
-
-        if slot_index.empty:
-            logger.warning(f"No slot found for {doctor} at {appointment_time}")
-            return None
+        """
+        Books an appointment by marking a slot as unavailable in the database.
+        This operation is atomic and persistent.
+        """
+        conn = self._get_db_conn()
+        iso_time = appointment_time.isoformat()
         
-        slot_index = slot_index[0]
-        
-        if not self.schedules_df.at[slot_index, 'available']:
-            logger.warning(f"Slot already booked for {doctor} at {appointment_time}")
-            return None
+        try:
+            with conn:
+                # Check if the slot exists and is available
+                cursor = conn.execute(
+                    "SELECT id FROM doctor_schedules WHERE doctor_name = ? AND datetime = ? AND available = 1",
+                    (doctor, iso_time)
+                )
+                slot = cursor.fetchone()
+                
+                if not slot:
+                    logger.warning(f"Attempted to book an unavailable/non-existent slot for {doctor} at {iso_time}")
+                    return None # Slot is not available or doesn't exist
+
+                # Mark the slot as unavailable
+                conn.execute(
+                    "UPDATE doctor_schedules SET available = 0 WHERE id = ?",
+                    (slot['id'],)
+                )
+
+            booking_id = f"APT-DB-{int(datetime.now().timestamp())}"
+            logger.info(f"Successfully booked appointment {booking_id} in the database for {doctor} at {iso_time}")
             
-        # Mark as booked
-        self.schedules_df.at[slot_index, 'available'] = False
-        
-        booking_id = f"APT-{int(datetime.now().timestamp())}"
-        
-        logger.info(f"Appointment {booking_id} booked successfully")
-        
-        return {
-            "booking_id": booking_id,
-            "status": "confirmed",
-            "doctor": doctor,
-            "appointment_time": appointment_time.isoformat(),
-            "patient_name": patient_data.get('full_name')
-        }
+            return {
+                "booking_id": booking_id,
+                "status": "confirmed",
+                "doctor": doctor,
+                "appointment_time": appointment_time.isoformat(),
+                "patient_name": patient_data.get('full_name'),
+                "location": "Main Clinic" # Assuming a default location
+            }
+        except sqlite3.Error as e:
+            logger.error(f"Database error during booking: {e}")
+            return None
+        finally:
+            conn.close()

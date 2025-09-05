@@ -24,8 +24,9 @@ logger = logging.getLogger(__name__)
 
 db = DatabaseManager()
 
-# --- Intelligent Tools ---
+# --- Tools ---
 
+# NOTE: This tool for returning patients is the version that worked and has NOT been changed.
 @tool
 def identify_patient(full_name: str, dob: str = None) -> str:
     """
@@ -75,24 +76,71 @@ def identify_patient(full_name: str, dob: str = None) -> str:
 @tool
 def register_new_patient(first_name: str, last_name: str, dob: str, phone: str, email: str) -> str:
     """Registers a new patient in the database. MUST be called for a new patient before booking."""
-    patient_data = { "first_name": first_name, "last_name": last_name, "dob": dob, "phone": phone, "email": email }
+    normalized_dob = None
+    for fmt in ("%Y-%m-%d", "%d-%m-%Y", "%m/%d/%Y"):
+        try:
+            normalized_dob = datetime.strptime(dob, fmt).strftime("%Y-%m-%d")
+            break
+        except (ValueError, TypeError): continue
+    if not normalized_dob: return "Failed to register: DOB format is invalid. Please use YYYY-MM-DD."
+
+    patient_data = { "first_name": first_name, "last_name": last_name, "dob": normalized_dob, "phone": phone, "email": email }
     new_patient = db.create_patient(patient_data)
     if new_patient:
         return f"Successfully registered new patient {new_patient.full_name} with ID {new_patient.id}. You may now book their appointment."
     return "Failed to register new patient."
 
 @tool
-def find_available_appointments(doctor_specialty: str) -> str:
-    """Finds the earliest available appointment for a given specialty."""
+def find_available_appointments(symptom: str = None, doctor_specialty: str = None) -> str:
+    """
+    Intelligently finds available appointments.
+    If a symptom is provided (e.g., 'cough', 'allergy'), it recommends the best specialist.
+    If the recommended specialist is unavailable, it automatically checks for a General Practitioner as an alternative.
+    """
     calendar = CalendlyIntegration()
-    doctor_map = { "pulmonologist": "Dr. Michael Chen", "allergist": "Dr. Sarah Johnson", "immunologist": "Dr. Emily Rodriguez" }
-    doctor_name = next((name for spec, name in doctor_map.items() if spec in doctor_specialty.lower()), None)
-    if not doctor_name: return f"Error: Unknown specialty '{doctor_specialty}'."
     
-    earliest_slot = calendar.get_earliest_slot(doctor_name, datetime.now())
+    symptom_map = {
+        "cough": "Pulmonologist", "breathing": "Pulmonologist",
+        "allergy": "Allergist", "rash": "Allergist", "immune": "Immunologist"
+    }
+    
+    doctor_map = {
+        "Pulmonologist": "Dr. Michael Chen", "Allergist": "Dr. Sarah Johnson",
+        "Immunologist": "Dr. Emily Rodriguez", "General Practitioner": "Dr. Sarah Johnson" # Simulating GP
+    }
+
+    primary_specialty = doctor_specialty
+    if not primary_specialty and symptom:
+        for key, specialty in symptom_map.items():
+            if key in symptom.lower():
+                primary_specialty = specialty
+                break
+    
+    if not primary_specialty:
+        return json.dumps({"status": "clarification_needed", "message": "To find the right doctor, could you tell me a bit about your symptoms or what specialty you're looking for?"})
+
+    primary_doctor_name = doctor_map.get(primary_specialty)
+    if not primary_doctor_name:
+        return json.dumps({"status": "error", "message": f"We don't have a '{primary_specialty}'. Our specialties are Pulmonologist, Allergist, and Immunologist."})
+
+    earliest_slot = calendar.get_earliest_slot(primary_doctor_name, datetime.now())
     if earliest_slot:
-        return f"The earliest available slot for {doctor_name} is {earliest_slot.strftime('%A, %B %d at %I:%M %p')}. The full datetime for booking is {earliest_slot.isoformat()}."
-    return f"No upcoming slots found for {doctor_name}."
+        return json.dumps({
+            "status": "slot_found",
+            "message": f"For your symptoms, I recommend a {primary_specialty}. The earliest appointment with {primary_doctor_name} is {earliest_slot.strftime('%A, %B %d at %I:%M %p')}.",
+            "booking_details": {"doctor": primary_doctor_name, "iso_datetime": earliest_slot.isoformat()}
+        })
+
+    secondary_doctor_name = doctor_map.get("General Practitioner") 
+    secondary_slot = calendar.get_earliest_slot(secondary_doctor_name, datetime.now())
+    if secondary_slot:
+        return json.dumps({
+            "status": "alternative_found",
+            "message": f"Our {primary_specialty} ({primary_doctor_name}) is fully booked right now. However, a General Practitioner ({secondary_doctor_name}) can see you for your {symptom}. Their earliest availability is {secondary_slot.strftime('%A, %B %d at %I:%M %p')}. Would that work?",
+            "booking_details": {"doctor": secondary_doctor_name, "iso_datetime": secondary_slot.isoformat()}
+        })
+        
+    return json.dumps({"status": "no_slots", "message": "I'm very sorry, but all of our relevant doctors are fully booked at the moment. Please try checking again tomorrow."})
 
 @tool
 def book_appointment(patient_id: str, doctor: str, iso_datetime: str) -> str:
@@ -106,7 +154,7 @@ def book_appointment(patient_id: str, doctor: str, iso_datetime: str) -> str:
     duration = 60 if patient.patient_type == PatientType.NEW else 30
     booking_result = calendar.book_appointment(doctor, appointment_time, {"full_name": patient.full_name}, duration)
     if not (booking_result and booking_result.get("status") == "confirmed"):
-        return "Error: Could not book the appointment. The slot may have just been taken."
+        return "I apologize, but there appears to be an issue with booking. That slot may have just been taken by another patient. Please try finding another appointment."
 
     appointment_id = booking_result.get("booking_id")
     new_appointment = Appointment(
@@ -118,11 +166,11 @@ def book_appointment(patient_id: str, doctor: str, iso_datetime: str) -> str:
     
     get_reminder_system().schedule_appointment_reminders(appointment_id, appointment_time, patient.email, patient.phone)
     
-    success_message = f"Success! I've booked an appointment for {patient.full_name} with {doctor} on {appointment_time.strftime('%A, %B %d at %I:%M %p')}. The reminder system is active."
+    success_message = f"Excellent, you're all set! I've booked an appointment for {patient.full_name} with {doctor} on {appointment_time.strftime('%A, %B %d at %I:%M %p')}. You'll receive reminders from us."
     
     if patient.patient_type == PatientType.NEW:
         email_service.send_intake_forms(patient.__dict__, new_appointment.__dict__)
-        success_message += " I have also emailed the New Patient Intake Form."
+        success_message += " I have also emailed the New Patient Intake Form to your email. Please fill it out before your visit."
 
     return success_message
 
@@ -131,17 +179,17 @@ class AgentState(TypedDict):
 
 class EnhancedMedicalSchedulingAgent:
     def __init__(self):
-        system_prompt = """You are a warm, empathetic, and highly competent medical scheduling assistant named Alex. Your goal is to make booking an appointment a smooth and pleasant experience.
+        system_prompt = """You are a warm, empathetic, and highly competent medical scheduling assistant named Alex.
 
-        **Your Conversational Flow:**
-        1.  **Greeting:** Start with a friendly, open-ended greeting.
-        2.  **Identification:** Your first task is to identify the patient. Ask for their full name. Once you have it, you can ask for their date of birth.
-        3.  **Use the `identify_patient` tool** as soon as you have a name. If the user provides a DOB, include it.
-        4.  **Handle the Result Humanly:**
-            - If the tool returns `"status": "verified"`, greet them warmly by name: "Great, I've found your file, {full_name}! Welcome back." Then, if there's a suggestion, use it: "{suggestion}".
-            - If the tool returns `"status": "not_found"`, respond empathetically: "It looks like you're new here, welcome! I'll just need a phone number and email to get you registered." Then, use the `register_new_patient` tool once you have the info.
-            - If the tool returns `"status": "clarification_needed"`, use the exact message provided by the tool to ask for clarification.
-        5.  **Be Flexible:** Patients may provide information in pieces. Acknowledge what you receive ("Thanks!") and then ask for the next piece of information.
+        **Your Core Workflow:**
+        1.  **Identify Patient:** Always start by trying to identify the patient with the `identify_patient` tool. Get their full name and DOB to do this.
+        2.  **Returning Patient Flow:** If `identify_patient` is successful, greet them warmly and use the suggestion provided by the tool to be proactive. This logic is proven and works well.
+        3.  **New Patient Flow:**
+            - If `identify_patient` fails, the user is new. Welcome them and collect their phone/email to use the `register_new_patient` tool.
+            - Once registered, ask them about their symptoms (e.g., "What symptoms are you experiencing?").
+            - Use their answer in the `symptom` parameter of the `find_available_appointments` tool.
+            - The tool will intelligently find the best specialist and even a backup option. Present the results from the tool clearly and conversationally to the patient.
+        4.  **Be Human:** If a patient is unsure, be helpful. If you don't have enough information, ask for it politely. If a tool fails, apologize and offer an alternative path.
         """
         self.llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.1, system_instruction=system_prompt)
         tools = [identify_patient, register_new_patient, find_available_appointments, book_appointment]
