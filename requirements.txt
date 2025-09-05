@@ -1,0 +1,38 @@
+# AI Medical Scheduling Agent - Requirements (Latest Versions)
+# RagaAI Assignment - 100% Feature Implementation
+
+# Core Framework (LangGraph + LangChain as specified)
+langchain
+langchain-google-genai
+langgraph
+
+# Data Processing (Mock EMR and Excel as required)
+pandas
+openpyxl
+
+# User Interface (Streamlit for demo)
+streamlit
+plotly
+
+# Utilities
+python-dotenv
+requests
+pydantic
+
+# Communication Services (Email + SMS for reminders)
+sendgrid
+twilio
+
+# Reminder System (Complete automation)
+schedule
+flask
+
+# Testing
+pytest
+pytest-cov
+
+# Data Generation (for 50 sample patients)
+faker
+
+# Analytics and calculations
+numpy

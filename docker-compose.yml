@@ -1,0 +1,123 @@
+# Docker Compose for AI Medical Scheduling Agent
+# RagaAI Assignment - Local Development & Production Environment
+
+version: '3.8'
+
+services:
+  # Main application service
+  medical-scheduling-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production  # Use production stage
+    container_name: medical-scheduling-agent
+    ports:
+      - "8501:8501"  # Streamlit UI
+    environment:
+      # Required API keys
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      
+      # Optional services
+      - SENDGRID_API_KEY=${SENDGRID_API_KEY:-}
+      - TWILIO_SID=${TWILIO_SID:-}
+      - TWILIO_TOKEN=${TWILIO_TOKEN:-}
+      - FROM_EMAIL=${FROM_EMAIL:-noreply@medicare-clinic.com}
+      - TWILIO_FROM_PHONE=${TWILIO_FROM_PHONE:-}
+      
+      # Application configuration
+      - DEBUG=${DEBUG:-False}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - CLINIC_NAME=${CLINIC_NAME:-MediCare Allergy & Wellness Center}
+      - CLINIC_PHONE=${CLINIC_PHONE:-(555) 123-4567}
+      - CLINIC_ADDRESS=${CLINIC_ADDRESS:-456 Healthcare Boulevard, Suite 300}
+      
+    volumes:
+      # Persist data and logs
+      - ./data:/app/data
+      - ./exports:/app/exports
+      - ./logs:/app/logs
+      - medical_db:/app/db
+    
+    networks:
+      - medical_network
+    
+    restart: unless-stopped
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Development service (for development with hot reload)
+  medical-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: builder  # Use builder stage for dev
+    container_name: medical-scheduling-agent-dev
+    ports:
+      - "8502:8501"  # Different port for dev
+    environment:
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - DEBUG=True
+      - LOG_LEVEL=DEBUG
+    volumes:
+      # Mount source code for hot reload
+      - ./:/app
+      - /app/__pycache__
+    networks:
+      - medical_network
+    command: >
+      streamlit run ui/streamlit_app.py 
+      --server.address 0.0.0.0 
+      --server.port 8501 
+      --server.runOnSave true
+      --server.fileWatcherType auto
+    profiles:
+      - dev  # Only run with --profile dev
+
+# Named volumes for data persistence
+volumes:
+  medical_db:
+    driver: local
+
+# Custom network
+networks:
+  medical_network:
+    driver: bridge
+
+# Additional services for production (optional)
+# Uncomment for full production setup
+  
+# nginx:
+#   image: nginx:alpine
+#   container_name: medical-nginx
+#   ports:
+#     - "80:80"
+#     - "443:443"
+#   volumes:
+#     - ./deployment/nginx.conf:/etc/nginx/nginx.conf:ro
+#   depends_on:
+#     - medical-scheduling-agent
+#   networks:
+#     - medical_network
+#   profiles:
+#     - production
+
+# redis:
+#   image: redis:alpine
+#   container_name: medical-redis
+#   volumes:
+#     - redis_data:/data
+#   networks:
+#     - medical_network
+#   profiles:
+#     - production
+
+# Additional volumes for production
+# volumes:
+#   redis_data:
+#     driver: local

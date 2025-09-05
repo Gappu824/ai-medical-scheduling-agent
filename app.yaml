@@ -1,0 +1,85 @@
+# Google App Engine configuration for AI Medical Scheduling Agent
+# RagaAI Assignment - GCP App Engine Deployment
+
+runtime: python39
+
+# Service configuration
+service: medical-scheduling-agent
+
+# Instance configuration
+instance_class: F2  # 256MB RAM, 1.2GHz CPU
+
+# Auto-scaling configuration
+automatic_scaling:
+  min_instances: 1
+  max_instances: 10
+  target_cpu_utilization: 0.6
+  target_throughput_utilization: 0.6
+
+# Environment variables
+env_variables:
+  GOOGLE_API_KEY: "your_gemini_api_key_here"
+  DEBUG: "False"
+  LOG_LEVEL: "INFO"
+  CLINIC_NAME: "MediCare Allergy & Wellness Center"
+  CLINIC_PHONE: "(555) 123-4567"
+  CLINIC_ADDRESS: "456 Healthcare Boulevard, Suite 300"
+  PYTHONPATH: "/srv"
+
+# Network configuration
+network:
+  forwarded_ports:
+    - 8501
+
+# Health check configuration
+readiness_check:
+  path: "/_stcore/health"
+  check_interval_sec: 30
+  timeout_sec: 10
+  failure_threshold: 3
+  success_threshold: 2
+
+liveness_check:
+  path: "/_stcore/health"
+  check_interval_sec: 30
+  timeout_sec: 10
+  failure_threshold: 3
+  success_threshold: 2
+
+# Resource limits
+resources:
+  cpu: 1
+  memory_gb: 2
+  disk_size_gb: 10
+
+# Skip files (similar to .dockerignore)
+skip_files:
+  - ^(.*/)?#.*#$
+  - ^(.*/)?.*~$
+  - ^(.*/)?.*\.py[co]$
+  - ^(.*/)?.*/RCS/.*$
+  - ^(.*/)?\..*$
+  - ^(.*/)?tests/.*$
+  - ^(.*/)?test_.*\.py$
+  - ^(.*/)?docs/.*$
+  - ^(.*/)?README\.md$
+  - ^(.*/)?.*\.md$
+  - ^(.*/)?Dockerfile$
+  - ^(.*/)?docker-compose\.yml$
+  - ^(.*/)?\.dockerignore$
+  - ^(.*/)?deployment/.*$
+
+# Handlers for different routes
+handlers:
+  # Static files (if any)
+  - url: /static
+    static_dir: ui/static
+    secure: optional
+
+  # Main application
+  - url: /.*
+    script: auto
+    secure: optional
+
+# Entrypoint command
+entrypoint: streamlit run ui/streamlit_app.py --server.address 0.0.0.0 --server.port $PORT --server.headless true

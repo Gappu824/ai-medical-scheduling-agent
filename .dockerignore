@@ -1,0 +1,127 @@
+# Docker ignore file for AI Medical Scheduling Agent
+# RagaAI Assignment
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv/
+.env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+*.md
+docs/
+README.md
+
+# Tests
+tests/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Logs (keep structure but not content)
+logs/*.log
+*.log
+
+# Temporary files
+tmp/
+temp/
+.tmp/
+
+# Database files (will be generated)
+*.db
+*.sqlite
+*.sqlite3
+
+# Export files (will be generated)
+exports/*.xlsx
+exports/*.csv
+
+# Development files
+docker-compose.override.yml
+.env.local
+.env.development
+
+# Deployment files not needed in container
+deployment/terraform/
+deployment/kubernetes/
+deployment/scripts/
+
+# Large files
+*.zip
+*.tar.gz
+*.rar
+
+# Jupyter notebooks
+.ipynb_checkpoints/
+*.ipynb
+
+# PyCharm
+.idea/
+
+# Coverage reports
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+.hypothesis/
+
+# Translations
+*.mo
+*.pot
+
+# Scrapy stuff:
+.scrapy
+
+# Sphinx documentation
+docs/_build/
+
+# PyBuilder
+target/
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json

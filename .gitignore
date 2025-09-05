@@ -1,0 +1,166 @@
+# Git ignore file for AI Medical Scheduling Agent
+# RagaAI Assignment
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Operating System
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Application specific
+*.db
+*.sqlite
+*.sqlite3
+medical_scheduling.db
+test_*.db
+
+# Logs
+logs/
+*.log
+app.log
+
+# Generated exports
+exports/*.xlsx
+exports/*.csv
+!exports/.gitkeep
+!exports/sample_export.xlsx
+
+# Temporary files
+tmp/
+temp/
+.tmp/
+
+# Streamlit
+.streamlit/
+
+# Docker
+.docker/
+
+# Terraform
+deployment/terraform/*.tfstate
+deployment/terraform/*.tfstate.*
+deployment/terraform/.terraform/
+deployment/terraform/.terraform.lock.hcl
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pyenv
+.python-version
+
+# pipenv
+Pipfile.lock
+
+# PEP 582
+__pypackages__/
+
+# Celery stuff
+celerybeat-schedule
+celerybeat.pid
+
+# SageMath parsed files
+*.sage.py
+
+# Spyder project settings
+.spyderproject
+.spyproject
+
+# Rope project settings
+.ropeproject
+
+# mkdocs documentation
+/site
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# Custom API keys and secrets
+.env.local
+.env.production
+secrets/
+*.key
+*.pem
+
+# Large files
+*.zip
+*.tar.gz
+*.rar
+
+# Generated documentation
+docs/_build/
+docs/build/
