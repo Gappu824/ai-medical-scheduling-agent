@@ -17,68 +17,24 @@ from langgraph.graph.message import add_messages
 
 from database.database import DatabaseManager
 from integrations.calendly_integration import CalendlyIntegration
+# FIX: Added missing Patient and PatientType imports
+from database.models import Appointment, AppointmentStatus, Patient, PatientType
 
 logger = logging.getLogger(__name__)
 
-# --- Enhanced Tools with Reminder Integration ---
-
-@tool
-def get_date_for_relative_request(relative_date_request: str) -> str:
-    """Calculate actual date (YYYY-MM-DD) for relative requests like 'tomorrow', 'next Wednesday'"""
-    today = datetime.now()
-    request = relative_date_request.lower()
-    
-    if "today" in request:
-        return today.strftime("%Y-%m-%d")
-    if "tomorrow" in request:
-        return (today + timedelta(days=1)).strftime("%Y-%m-%d")
-    
-    weekdays = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
-    for i, day in enumerate(weekdays):
-        if day in request:
-            days_ahead = i - today.weekday()
-            if days_ahead <= 0:
-                days_ahead += 7
-            return (today + timedelta(days=days_ahead)).strftime("%Y-%m-%d")
-            
-    return "Error: Could not determine date. Please ask user to clarify."
-
-@tool
-def find_available_appointments(doctor_specialty: str, desired_date: str) -> str:
-    """Find available slots for doctor specialty on specific date"""
-    print(f"--- TOOL: Finding slots for {doctor_specialty} on {desired_date} ---")
-    calendar = CalendlyIntegration()
-    doctor_map = {
-        "pulmonologist": "Dr. Michael Chen", 
-        "allergist": "Dr. Sarah Johnson", 
-        "immunologist": "Dr. Emily Rodriguez"
-    }
-    doctor_name = next((name for spec, name in doctor_map.items() if spec in doctor_specialty.lower()), None)
-    
-    if not doctor_name:
-        return f"Error: '{doctor_specialty}' not recognized. Available: Pulmonologist, Allergist, Immunologist."
-
-    try:
-        check_date = datetime.strptime(desired_date, "%Y-%m-%d")
-        if check_date.weekday() > 4:
-             return f"Clinic closed weekends. No appointments on {desired_date}."
-
-        slots = calendar.get_available_slots(doctor_name, check_date, 30)
-        if slots:
-            slot_strings = [s.strftime('%I:%M %p') for s in slots]
-            return f"On {check_date.strftime('%A, %B %d')}, available for {doctor_name} ({doctor_specialty}): {', '.join(slot_strings)}"
-        return f"No slots available for {doctor_name} on {desired_date}. Try different day?"
-    except Exception as e:
-        return f"Error finding slots: {str(e)}. Date format must be YYYY-MM-DD."
+# --- Enhanced Tools with Full Backend Integration ---
 
 @tool
 def search_for_patient(first_name: str, last_name: str, dob: str) -> str:
-    """Search database for existing patient using name and DOB"""
+    """
+    Searches the database for an existing patient using their first name, last name, and date of birth.
+    Returns 'Patient Not Found' if no record exists.
+    """
     print(f"--- TOOL: Searching for patient: {first_name} {last_name}, DOB: {dob} ---")
     db = DatabaseManager()
     try:
         # Normalize DOB format
-        for fmt in ("%m/%d/%Y", "%Y-%m-%d", "%B %d, %Y"):
+        for fmt in ("%d-%m-%Y", "%m/%d/%Y", "%Y-%m-%d", "%B %d, %Y"):
             try:
                 normalized_dob = datetime.strptime(dob, fmt).strftime("%Y-%m-%d")
                 break
@@ -89,253 +45,138 @@ def search_for_patient(first_name: str, last_name: str, dob: str) -> str:
             
         patient = db.find_patient(first_name=first_name, last_name=last_name, dob=normalized_dob)
         if patient:
-            return f"Patient Found: {patient.full_name}, Type={patient.patient_type.value}. Returning patient - 30 minute appointment."
-        return "Patient Not Found. New patient - 60 minute appointment."
+            return f"Patient Found: {patient.full_name}, Type={patient.patient_type.value}. This is a returning patient."
+        return "Patient Not Found. This is a new patient. You must register them before booking."
     except Exception as e:
         return f"Error searching patient: {e}"
 
 @tool
-def book_appointment(doctor: str, iso_datetime: str, patient_full_name: str, duration: int) -> str:
+def register_new_patient(first_name: str, last_name: str, dob: str, phone: str, email: str) -> str:
     """
-    Book appointment AND automatically trigger reminder system
-    This is the key integration point!
+    Registers a new patient in the database. This tool MUST be called for any new patient
+    before attempting to book an appointment. It requires full name, DOB, phone, and email.
     """
-    print(f"--- TOOL: Booking appointment for {patient_full_name} with {doctor} at {iso_datetime} for {duration} mins ---")
+    print(f"--- TOOL: Registering new patient: {first_name} {last_name} ---")
+    db = DatabaseManager()
+    
+    # Normalize DOB
+    for fmt in ("%d-%m-%Y", "%m/%d/%Y", "%Y-%m-%d"):
+        try:
+            normalized_dob = datetime.strptime(dob, fmt).strftime("%Y-%m-%d")
+            break
+        except ValueError:
+            pass
+    else:
+        normalized_dob = dob
+        
+    patient_data = {
+        "first_name": first_name,
+        "last_name": last_name,
+        "dob": normalized_dob,
+        "phone": phone,
+        "email": email
+    }
+    
+    try:
+        new_patient = db.create_patient(patient_data)
+        if new_patient:
+            return f"Successfully registered new patient: {new_patient.full_name}. You can now proceed with booking their appointment."
+        else:
+            return "Failed to register new patient. Please check the details and try again."
+    except Exception as e:
+        logger.error(f"Error registering new patient: {e}")
+        return f"An error occurred during patient registration: {e}"
+
+@tool
+def find_available_appointments(doctor_specialty: str, desired_date: str = "earliest") -> str:
+    """
+    Finds available appointment slots. If the desired_date is 'earliest' or not provided, 
+    it will find the very next available appointment.
+    """
+    print(f"--- TOOL: Finding slots for {doctor_specialty} on {desired_date} ---")
     calendar = CalendlyIntegration()
+    doctor_map = {
+        "pulmonologist": "Dr. Michael Chen", 
+        "allergist": "Dr. Sarah Johnson", 
+        "immunologist": "Dr. Emily Rodriguez"
+    }
+    doctor_name = next((name for spec, name in doctor_map.items() if spec in doctor_specialty.lower()), None)
+    
+    if not doctor_name:
+        return f"Error: '{doctor_specialty}' is not a recognized specialty. Please choose from Pulmonologist, Allergist, or Immunologist."
+
+    try:
+        if desired_date.lower() in ["earliest", "soonest", "whenever available", ""]:
+            earliest_slot = calendar.get_earliest_slot(doctor_name, datetime.now())
+            if earliest_slot:
+                slot_date = earliest_slot.strftime('%A, %B %d, %Y')
+                slot_time = earliest_slot.strftime('%I:%M %p')
+                return f"I found the earliest available appointment for a {doctor_specialty} ({doctor_name}) is on {slot_date} at {slot_time}. Does this time work for you?"
+            else:
+                return f"I'm sorry, there are no available appointments for {doctor_name} in the next 30 days."
+        else:
+            check_date = datetime.strptime(desired_date, "%Y-%m-%d")
+            slots = calendar.get_available_slots(doctor_name, check_date, 30)
+            if slots:
+                slot_strings = [s.strftime('%I:%M %p') for s in slots]
+                return f"On {check_date.strftime('%A, %B %d')}, these time slots are available for {doctor_name} ({doctor_specialty}): {', '.join(slot_strings)}"
+            return f"No slots were found for {doctor_name} on {desired_date}. Would you like to try a different day?"
+    except Exception as e:
+        return f"Error finding slots: {e}"
+        
+@tool
+def book_appointment(doctor: str, iso_datetime: str, patient_full_name: str) -> str:
+    """
+    Books an appointment for a REGISTERED patient. Requires the patient's full name.
+    This tool will fail if the patient is not already in the database.
+    """
+    print(f"--- TOOL: Booking appointment for {patient_full_name} with {doctor} at {iso_datetime} ---")
+    calendar = CalendlyIntegration()
+    db = DatabaseManager()
     
     try:
         appointment_time = datetime.fromisoformat(iso_datetime)
-        patient_data = {"full_name": patient_full_name}
         
-        # Book the appointment
-        booking_result = calendar.book_appointment(doctor, appointment_time, patient_data, duration)
+        name_parts = patient_full_name.split(' ', 1)
+        if len(name_parts) < 2:
+            return "Error: Please provide both first and last name for the patient."
+            
+        patient = db.find_patient(name_parts[0], name_parts[1], "") 
         
-        if booking_result and booking_result.get("status") == "confirmed":
-            appointment_id = booking_result.get("booking_id")
-            
-            # *** CRITICAL: Trigger reminder system after successful booking ***
-            success_message = f"Success! Appointment for {patient_full_name} with {doctor} at {appointment_time.strftime('%A, %B %d at %I:%M %p')} is confirmed."
-            
-            # Get patient details for reminders
-            db = DatabaseManager()
-            name_parts = patient_full_name.split(' ', 1)
-            if len(name_parts) >= 2:
-                first_name, last_name = name_parts[0], name_parts[1]
-                
-                # Find patient to get email/phone
-                patient = db.find_patient(first_name, last_name, "")  # We'd need DOB for exact match
-                
-                if patient and patient.email:
-                    # Trigger the reminder system
-                    reminder_success = trigger_appointment_reminders(
-                        appointment_id, 
-                        appointment_time,
-                        patient.email,
-                        patient.phone
-                    )
-                    
-                    if reminder_success:
-                        success_message += " 3-tier reminder system activated (7-day, 24-hour, 2-hour reminders)."
-                    else:
-                        success_message += " Appointment booked but reminder setup had issues."
-                else:
-                    success_message += " Appointment booked. Please provide patient email for reminders."
-            
-            success_message += " Please ask for insurance information to complete the process."
-            return success_message
-        else:
-            return "Error: Could not book appointment. Slot may be taken. Please try alternative times."
-    except Exception as e:
-        return f"Booking error: {e}"
+        if not patient:
+            return f"Error: Patient '{patient_full_name}' is not registered. You MUST register the patient before booking."
 
-def trigger_appointment_reminders(appointment_id: str, appointment_datetime: datetime, 
-                                patient_email: str, patient_phone: str = None) -> bool:
-    """
-    THE MISSING PIECE: Trigger 3-tier reminder system after booking
-    This creates reminders in database AND processes immediate sends
-    """
-    try:
-        conn = sqlite3.connect("medical_scheduling.db")
-        cursor = conn.cursor()
+        duration = 60 if patient.patient_type == PatientType.NEW else 30
         
-        # Ensure reminders table exists
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS reminders (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            appointment_id TEXT NOT NULL,
-            reminder_type TEXT NOT NULL CHECK(reminder_type IN ('initial', 'form_check', 'final_confirmation')),
-            scheduled_time TEXT NOT NULL,
-            sent BOOLEAN DEFAULT FALSE,
-            email_sent BOOLEAN DEFAULT FALSE,
-            sms_sent BOOLEAN DEFAULT FALSE,
-            response_received BOOLEAN DEFAULT FALSE,
-            patient_email TEXT,
-            patient_phone TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        booking_result = calendar.book_appointment(doctor, appointment_time, {"full_name": patient_full_name}, duration)
+        
+        if not (booking_result and booking_result.get("status") == "confirmed"):
+            return "Error: Could not book in calendar. The slot may be taken."
+
+        appointment_id = booking_result.get("booking_id")
+        
+        new_appointment = Appointment(
+            id=appointment_id,
+            patient_id=patient.id,
+            doctor=doctor,
+            location=booking_result.get("location", "Main Clinic"),
+            appointment_datetime=appointment_time,
+            duration=duration,
+            status=AppointmentStatus.SCHEDULED
         )
-        """)
+        db.create_appointment(new_appointment)
+
+        from integrations.reminder_system import get_reminder_system
+        reminder_system = get_reminder_system()
+        reminder_system.schedule_appointment_reminders(
+            appointment_id, appointment_time, patient.email, patient.phone
+        )
         
-        # Create 3-tier reminder schedule
-        reminders = [
-            {
-                'type': 'initial',
-                'time': appointment_datetime - timedelta(days=7),
-                'description': '7-day initial reminder'
-            },
-            {
-                'type': 'form_check',
-                'time': appointment_datetime - timedelta(hours=24), 
-                'description': '24-hour form completion check'
-            },
-            {
-                'type': 'final_confirmation',
-                'time': appointment_datetime - timedelta(hours=2),
-                'description': '2-hour final confirmation'
-            }
-        ]
-        
-        created_count = 0
-        current_time = datetime.now()
-        
-        for reminder in reminders:
-            # Insert reminder into database
-            cursor.execute("""
-            INSERT INTO reminders 
-            (appointment_id, reminder_type, scheduled_time, patient_email, patient_phone)
-            VALUES (?, ?, ?, ?, ?)
-            """, (
-                appointment_id,
-                reminder['type'],
-                reminder['time'].isoformat(),
-                patient_email,
-                patient_phone
-            ))
-            
-            created_count += 1
-            logger.info(f"📅 Scheduled {reminder['description']} for {appointment_id}")
-            
-            # If reminder time has already passed, send immediately
-            if reminder['time'] <= current_time:
-                send_immediate_reminder(
-                    appointment_id, 
-                    reminder['type'],
-                    patient_email,
-                    patient_phone,
-                    appointment_datetime
-                )
-        
-        conn.commit()
-        conn.close()
-        
-        logger.info(f"✅ Created {created_count} reminders for appointment {appointment_id}")
-        return True
-        
+        return f"Success! Appointment for {patient_full_name} confirmed with {doctor} on {appointment_time.strftime('%A, %B %d at %I:%M %p')}. The reminder system is active."
+
     except Exception as e:
-        logger.error(f"❌ Error creating reminders: {e}")
-        return False
-
-def send_immediate_reminder(appointment_id: str, reminder_type: str, 
-                          patient_email: str, patient_phone: str,
-                          appointment_datetime: datetime):
-    """Send reminder immediately if due"""
-    try:
-        # Try to import and use email service
-        try:
-            from integrations.email_service import EmailService
-            email_service = EmailService()
-            
-            email_content = create_reminder_email_content(reminder_type, appointment_datetime)
-            email_sent = email_service.send_reminder_email(patient_email, email_content)
-            
-            if email_sent:
-                logger.info(f"📧 Sent {reminder_type} email reminder to {patient_email}")
-        except ImportError:
-            logger.warning("Email service not available")
-            email_sent = False
-        
-        # Try to send SMS
-        try:
-            from integrations.sms_service import SMSService
-            sms_service = SMSService()
-            
-            sms_content = create_reminder_sms_content(reminder_type, appointment_datetime)
-            sms_sent = sms_service.send_sms(patient_phone, sms_content)
-            
-            if sms_sent:
-                logger.info(f"📱 Sent {reminder_type} SMS reminder to {patient_phone}")
-        except ImportError:
-            logger.warning("SMS service not available")
-            sms_sent = False
-        
-        # Update reminder as sent
-        conn = sqlite3.connect("medical_scheduling.db")
-        cursor = conn.cursor()
-        
-        cursor.execute("""
-        UPDATE reminders 
-        SET sent = TRUE, email_sent = ?, sms_sent = ?
-        WHERE appointment_id = ? AND reminder_type = ?
-        """, (email_sent, sms_sent, appointment_id, reminder_type))
-        
-        conn.commit()
-        conn.close()
-        
-    except Exception as e:
-        logger.error(f"❌ Error sending immediate reminder: {e}")
-
-def create_reminder_email_content(reminder_type: str, appointment_datetime: datetime) -> str:
-    """Create email content based on reminder type"""
-    
-    if reminder_type == "initial":
-        return f"""
-        🏥 MediCare Appointment Reminder
-        
-        Your appointment is scheduled for {appointment_datetime.strftime('%A, %B %d at %I:%M %p')}.
-        
-        Please mark your calendar and we'll send you forms to complete soon.
-        
-        Call (555) 123-4567 if you need to reschedule.
-        """
-    
-    elif reminder_type == "form_check":
-        return f"""
-        🏥 MediCare - Action Required!
-        
-        Your appointment is TOMORROW: {appointment_datetime.strftime('%A, %B %d at %I:%M %p')}
-        
-        ✅ Please confirm:
-        1. Have you completed your intake forms?
-        2. Will you be attending your appointment?
-        
-        Reply to this email or call (555) 123-4567.
-        
-        If you need to cancel, please let us know immediately.
-        """
-    
-    elif reminder_type == "final_confirmation":
-        return f"""
-        🚨 MediCare - Final Reminder!
-        
-        Your appointment is in 2 HOURS: {appointment_datetime.strftime('%I:%M %p TODAY')}
-        
-        📍 Location: Main Clinic - 456 Healthcare Blvd
-        ⏰ Please arrive 15 minutes early
-        📋 Bring: Insurance card, ID, completed forms
-        
-        Last chance to cancel: (555) 123-4567
-        """
-
-def create_reminder_sms_content(reminder_type: str, appointment_datetime: datetime) -> str:
-    """Create SMS content based on reminder type"""
-    
-    if reminder_type == "initial":
-        return f"🏥 MediCare: Appointment reminder {appointment_datetime.strftime('%m/%d at %I:%M%p')}. Forms coming soon. Call (555) 123-4567 to reschedule."
-    
-    elif reminder_type == "form_check": 
-        return f"🏥 MediCare: Appointment TOMORROW {appointment_datetime.strftime('%I:%M%p')}. Completed forms? Reply YES/NO. Confirm visit? Reply CONFIRM/CANCEL."
-    
-    elif reminder_type == "final_confirmation":
-        return f"🚨 MediCare: Appointment in 2 HOURS at {appointment_datetime.strftime('%I:%M%p')}! Arrive 15min early. 456 Healthcare Blvd. Cancel: (555) 123-4567"
+        logger.error(f"Booking tool error: {e}")
+        return f"A critical error occurred during booking: {e}"
 
 class AgentState(TypedDict):
     messages: Annotated[list, add_messages]
@@ -343,7 +184,7 @@ class AgentState(TypedDict):
 class EnhancedMedicalSchedulingAgent:
     def __init__(self):
         self.llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.1)
-        tools = [search_for_patient, find_available_appointments, get_date_for_relative_request, book_appointment]
+        tools = [search_for_patient, register_new_patient, find_available_appointments, book_appointment]
         self.agent = self.llm.bind_tools(tools)
         self.graph = self._build_graph()
 
@@ -364,7 +205,7 @@ class EnhancedMedicalSchedulingAgent:
         tool_messages = []
         for call in tool_calls:
             tool_name = call['name']
-            tool_to_call = next((t for t in [search_for_patient, find_available_appointments, get_date_for_relative_request, book_appointment] if t.name == tool_name), None)
+            tool_to_call = next((t for t in [search_for_patient, register_new_patient, find_available_appointments, book_appointment] if t.name == tool_name), None)
             if tool_to_call:
                 try:
                     result = tool_to_call.invoke(call['args'])
@@ -374,8 +215,7 @@ class EnhancedMedicalSchedulingAgent:
         return {"messages": tool_messages}
 
     def process_message(self, conversation_history: list):
-        final_state = self.graph.invoke({"messages": conversation_history})
-        return final_state['messages']
+        return self.graph.invoke({"messages": conversation_history})['messages']
 
 # Compatibility
 MedicalSchedulingAgent = EnhancedMedicalSchedulingAgent

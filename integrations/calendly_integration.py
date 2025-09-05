@@ -41,10 +41,10 @@ class CalendlyIntegration:
             return []
 
         # Convert date to datetime if it's a date object
-        if hasattr(date, 'date'):
-            check_date = date
-        else:
+        if not isinstance(date, datetime):
             check_date = datetime.combine(date, datetime.min.time())
+        else:
+            check_date = date
         
         day_start = check_date.replace(hour=0, minute=0, second=0, microsecond=0)
         day_end = day_start + timedelta(days=1)
@@ -59,6 +59,24 @@ class CalendlyIntegration:
         
         available_slots_df = self.schedules_df[mask]
         return sorted(available_slots_df['datetime'].tolist())
+
+    def get_earliest_slot(self, doctor: str, start_after: datetime) -> Optional[datetime]:
+        """Find the earliest available slot for a doctor from a given time."""
+        if self.schedules_df is None or self.schedules_df.empty:
+            return None
+
+        mask = (
+            (self.schedules_df['doctor_name'] == doctor) &
+            (self.schedules_df['datetime'] > start_after) &
+            (self.schedules_df['available'] == True)
+        )
+        
+        earliest_slots = self.schedules_df[mask].sort_values(by='datetime').head(1)
+        
+        if not earliest_slots.empty:
+            return earliest_slots.iloc[0]['datetime']
+        
+        return None
 
     def book_appointment(self, doctor: str, appointment_time: datetime, patient_data: Dict, duration: int) -> Optional[Dict]:
         """Book an appointment"""
