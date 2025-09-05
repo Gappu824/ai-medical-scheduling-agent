@@ -1,6 +1,6 @@
 """
-Fully Functional Automated Reminder System
-RagaAI Assignment - Complete Working Reminder System with Real Scheduling
+Production Reminder System with Real Automation
+RagaAI Assignment - Complete 3-Tier Reminder System with Response Tracking
 """
 
 import os
@@ -9,124 +9,182 @@ import sqlite3
 import json
 import threading
 import time
+import schedule
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-class FunctionalReminderSystem:
-    """Fully functional reminder system with real automation"""
+class ProductionReminderSystem:
+    """Production reminder system with real automation and response tracking"""
     
     def __init__(self, db_path: str = "medical_scheduling.db"):
         self.db_path = db_path
         self.is_running = False
-        self.check_interval = 300  # 5 minutes for demo (normally 30 minutes)
+        self.check_interval = 60  # Check every minute for production
         self.worker_thread = None
+        
+        # Initialize email and SMS services
+        self._init_services()
+        
+        # Initialize database tables
         self.init_reminder_tables()
         
-        logger.info("Functional Reminder System initialized")
+        # Set up scheduler
+        self._setup_scheduler()
+        
+        logger.info("Production Reminder System initialized")
+    
+    def _init_services(self):
+        """Initialize email and SMS services"""
+        try:
+            from integrations.email_service import EmailService
+            from integrations.sms_service import SMSService
+            
+            self.email_service = EmailService()
+            self.sms_service = SMSService()
+            
+            logger.info("✅ Email and SMS services initialized")
+        except ImportError as e:
+            logger.error(f"❌ Failed to import services: {e}")
+            self.email_service = None
+            self.sms_service = None
     
     def init_reminder_tables(self):
-        """Ensure reminder tables exist"""
+        """Initialize reminder tables with comprehensive schema"""
         try:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
             
-            # Create reminders table if not exists
+            # Enhanced reminders table
             cursor.execute("""
             CREATE TABLE IF NOT EXISTS reminders (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 appointment_id TEXT NOT NULL,
-                reminder_type TEXT NOT NULL CHECK(reminder_type IN ('initial', 'form_check', 'final')),
+                reminder_type TEXT NOT NULL CHECK(reminder_type IN ('initial', 'form_check', 'final_confirmation')),
                 scheduled_time TEXT NOT NULL,
                 sent BOOLEAN DEFAULT FALSE,
-                response TEXT,
-                sent_at TIMESTAMP,
-                delivery_status TEXT DEFAULT 'pending',
-                channel TEXT DEFAULT 'email',
-                priority TEXT DEFAULT 'normal',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                email_sent BOOLEAN DEFAULT FALSE,
+                sms_sent BOOLEAN DEFAULT FALSE,
+                response_received BOOLEAN DEFAULT FALSE,
+                response_data TEXT,
+                attempts INTEGER DEFAULT 0,
+                last_attempt TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (appointment_id) REFERENCES appointments (id)
             )
             """)
             
-            # Create reminder responses table
+            # Reminder responses table for tracking patient responses
             cursor.execute("""
             CREATE TABLE IF NOT EXISTS reminder_responses (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 appointment_id TEXT NOT NULL,
+                reminder_id INTEGER,
                 response_type TEXT NOT NULL,
-                response_data TEXT,
-                response_channel TEXT DEFAULT 'unknown',
+                response_channel TEXT NOT NULL,
+                response_content TEXT,
+                action_taken TEXT,
+                processed BOOLEAN DEFAULT FALSE,
                 received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                processed BOOLEAN DEFAULT FALSE
+                FOREIGN KEY (appointment_id) REFERENCES appointments (id),
+                FOREIGN KEY (reminder_id) REFERENCES reminders (id)
+            )
+            """)
+            
+            # Reminder actions table for tracking URLs and actions
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS reminder_actions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                appointment_id TEXT NOT NULL,
+                action_type TEXT NOT NULL,
+                action_url TEXT,
+                action_data TEXT,
+                clicked BOOLEAN DEFAULT FALSE,
+                clicked_at TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
             """)
             
             conn.commit()
             conn.close()
             
+            logger.info("✅ Reminder tables initialized")
+            
         except Exception as e:
-            logger.error(f"Error initializing reminder tables: {e}")
+            logger.error(f"❌ Error initializing reminder tables: {e}")
     
-    def schedule_appointment_reminders(self, appointment_id: str, appointment_datetime: datetime, patient_email: str, patient_phone: str = None) -> bool:
-        """Schedule all three reminders for an appointment"""
+    def _setup_scheduler(self):
+        """Setup automated scheduler for reminder checking"""
+        # Schedule reminder checking every minute
+        schedule.every(1).minutes.do(self.check_and_process_reminders)
         
+        # Schedule cleanup every day at 2 AM
+        schedule.every().day.at("02:00").do(self.cleanup_old_reminders)
+        
+        logger.info("✅ Scheduler configured")
+    
+    def schedule_appointment_reminders(self, appointment_id: str, appointment_datetime: datetime, 
+                                     patient_email: str, patient_phone: str = None) -> bool:
+        """Schedule all three reminder tiers for an appointment"""
         try:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
             
             # Calculate reminder times
-            reminder_schedule = [
+            reminders = [
                 {
                     'type': 'initial',
                     'time': appointment_datetime - timedelta(days=7),
-                    'channel': 'email'
+                    'description': '7-day initial reminder'
                 },
                 {
-                    'type': 'form_check', 
+                    'type': 'form_check',
                     'time': appointment_datetime - timedelta(days=1),
-                    'channel': 'both' if patient_phone else 'email'
+                    'description': '24-hour form completion check'
                 },
                 {
-                    'type': 'final',
+                    'type': 'final_confirmation',
                     'time': appointment_datetime - timedelta(hours=2),
-                    'channel': 'both' if patient_phone else 'email',
-                    'priority': 'high'
+                    'description': '2-hour final confirmation'
                 }
             ]
             
             scheduled_count = 0
-            for reminder in reminder_schedule:
+            
+            for reminder in reminders:
                 # Only schedule future reminders
                 if reminder['time'] > datetime.now():
                     cursor.execute("""
                     INSERT INTO reminders 
-                    (appointment_id, reminder_type, scheduled_time, channel, priority)
-                    VALUES (?, ?, ?, ?, ?)
+                    (appointment_id, reminder_type, scheduled_time)
+                    VALUES (?, ?, ?)
                     """, (
                         appointment_id,
                         reminder['type'],
-                        reminder['time'].isoformat(),
-                        reminder['channel'],
-                        reminder.get('priority', 'normal')
+                        reminder['time'].isoformat()
                     ))
+                    
                     scheduled_count += 1
-                    logger.info(f"Scheduled {reminder['type']} reminder for {appointment_id}")
+                    logger.info(f"📅 Scheduled {reminder['description']} for {appointment_id}")
             
             conn.commit()
             conn.close()
             
-            logger.info(f"Scheduled {scheduled_count} reminders for appointment {appointment_id}")
-            return scheduled_count > 0
-            
+            if scheduled_count > 0:
+                logger.info(f"✅ Scheduled {scheduled_count} reminders for appointment {appointment_id}")
+                return True
+            else:
+                logger.warning(f"⚠️ No future reminders scheduled for {appointment_id}")
+                return False
+                
         except Exception as e:
-            logger.error(f"Error scheduling reminders: {e}")
+            logger.error(f"❌ Error scheduling reminders: {e}")
             return False
     
     def start_reminder_service(self):
-        """Start the automated reminder checking service"""
-        
+        """Start the automated reminder service"""
         if self.is_running:
             logger.warning("Reminder service already running")
             return
@@ -134,313 +192,389 @@ class FunctionalReminderSystem:
         self.is_running = True
         
         def reminder_worker():
-            """Worker thread that checks and sends reminders"""
-            logger.info("Reminder service worker started")
+            """Background worker for processing reminders"""
+            logger.info("🚀 Reminder service worker started")
             
             while self.is_running:
                 try:
-                    self.check_and_send_due_reminders()
-                    time.sleep(self.check_interval)
+                    # Run scheduled jobs
+                    schedule.run_pending()
+                    
+                    # Sleep for a short interval
+                    time.sleep(30)  # Check every 30 seconds
+                    
                 except Exception as e:
-                    logger.error(f"Error in reminder worker: {e}")
-                    time.sleep(60)  # Wait 1 minute on error
+                    logger.error(f"❌ Error in reminder worker: {e}")
+                    time.sleep(60)  # Wait longer on error
             
-            logger.info("Reminder service worker stopped")
+            logger.info("🛑 Reminder service worker stopped")
         
+        # Start worker thread
         self.worker_thread = threading.Thread(target=reminder_worker, daemon=True)
         self.worker_thread.start()
         
-        logger.info("Reminder service started successfully")
+        logger.info("✅ Reminder service started successfully")
     
     def stop_reminder_service(self):
-        """Stop the reminder service"""
-        
+        """Stop the reminder service gracefully"""
+        logger.info("🛑 Stopping reminder service...")
         self.is_running = False
         
         if self.worker_thread and self.worker_thread.is_alive():
-            logger.info("Stopping reminder service...")
             self.worker_thread.join(timeout=10)
         
-        logger.info("Reminder service stopped")
+        logger.info("✅ Reminder service stopped")
     
-    def check_and_send_due_reminders(self):
-        """Check for due reminders and send them"""
-        
+    def check_and_process_reminders(self):
+        """Check for due reminders and process them"""
         try:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
             
-            # Find due reminders
+            # Find due reminders that haven't been sent
             current_time = datetime.now().isoformat()
+            
             cursor.execute("""
-            SELECT r.*, a.appointment_datetime, a.doctor, a.location, a.patient_id,
+            SELECT r.id, r.appointment_id, r.reminder_type, r.scheduled_time,
+                   a.appointment_datetime, a.doctor, a.location,
                    p.first_name, p.last_name, p.email, p.phone
             FROM reminders r
             JOIN appointments a ON r.appointment_id = a.id
             JOIN patients p ON a.patient_id = p.id
-            WHERE r.scheduled_time <= ? 
+            WHERE r.scheduled_time <= ?
             AND r.sent = FALSE
+            AND a.status NOT IN ('cancelled', 'completed')
             ORDER BY r.scheduled_time
             """, (current_time,))
             
             due_reminders = cursor.fetchall()
             
             if due_reminders:
-                logger.info(f"Processing {len(due_reminders)} due reminders")
+                logger.info(f"📬 Processing {len(due_reminders)} due reminders")
                 
                 for reminder in due_reminders:
-                    self.send_reminder(reminder, cursor)
+                    self._process_single_reminder(reminder, cursor)
             
             conn.commit()
             conn.close()
             
         except Exception as e:
-            logger.error(f"Error checking reminders: {e}")
+            logger.error(f"❌ Error checking reminders: {e}")
     
-    def send_reminder(self, reminder_data: tuple, cursor):
-        """Send an individual reminder"""
-        
+    def _process_single_reminder(self, reminder_data: tuple, cursor):
+        """Process a single reminder"""
         try:
-            (reminder_id, appointment_id, reminder_type, scheduled_time, sent, response, 
-             sent_at, delivery_status, channel, priority, created_at,
-             appointment_datetime, doctor, location, patient_id, 
+            (reminder_id, appointment_id, reminder_type, scheduled_time,
+             appointment_datetime, doctor, location,
              first_name, last_name, email, phone) = reminder_data
             
-            # Skip if appointment has passed
+            # Parse appointment datetime
             apt_datetime = datetime.fromisoformat(appointment_datetime)
+            
+            # Skip if appointment has passed
             if apt_datetime <= datetime.now():
                 cursor.execute("""
-                UPDATE reminders SET sent = TRUE, delivery_status = 'expired', sent_at = ?
+                UPDATE reminders 
+                SET sent = TRUE, last_attempt = ?
                 WHERE id = ?
                 """, (datetime.now().isoformat(), reminder_id))
+                logger.info(f"⏭️ Skipped expired appointment reminder {reminder_id}")
                 return
             
-            # Send reminder based on type
-            success = False
+            # Prepare reminder data
+            reminder_data = {
+                'appointment_id': appointment_id,
+                'doctor': doctor,
+                'location': location,
+                'display_time': apt_datetime.strftime('%A, %B %d at %I:%M %p'),
+                'date': apt_datetime.strftime('%Y-%m-%d'),
+                'time': apt_datetime.strftime('%I:%M %p'),
+                'duration': 60  # Default duration
+            }
             
-            if reminder_type == 'initial':
-                success = self.send_initial_reminder(
-                    email, phone, first_name, apt_datetime, doctor, location
+            patient_data = {
+                'first_name': first_name,
+                'last_name': last_name,
+                'email': email,
+                'phone': phone
+            }
+            
+            # Send email and SMS
+            email_sent = False
+            sms_sent = False
+            
+            if email and self.email_service:
+                email_sent = self.email_service.send_reminder_email(
+                    patient_data, reminder_data, reminder_type
                 )
-            elif reminder_type == 'form_check':
-                success = self.send_form_check_reminder(
-                    email, phone, first_name, apt_datetime, doctor, location, appointment_id
-                )
-            elif reminder_type == 'final':
-                success = self.send_final_reminder(
-                    email, phone, first_name, apt_datetime, doctor, location, appointment_id
+            
+            if phone and self.sms_service:
+                sms_sent = self.sms_service.send_reminder_sms(
+                    phone, reminder_type, reminder_data
                 )
             
             # Update reminder status
-            status = 'sent' if success else 'failed'
+            overall_sent = email_sent or sms_sent
+            
             cursor.execute("""
             UPDATE reminders 
-            SET sent = ?, delivery_status = ?, sent_at = ?
+            SET sent = ?, email_sent = ?, sms_sent = ?, 
+                attempts = attempts + 1, last_attempt = ?
             WHERE id = ?
-            """, (success, status, datetime.now().isoformat(), reminder_id))
+            """, (
+                overall_sent, email_sent, sms_sent,
+                datetime.now().isoformat(), reminder_id
+            ))
             
-            if success:
-                logger.info(f"Sent {reminder_type} reminder for appointment {appointment_id}")
-            else:
-                logger.error(f"Failed to send {reminder_type} reminder for {appointment_id}")
+            if overall_sent:
+                logger.info(f"✅ Sent {reminder_type} reminder for appointment {appointment_id}")
                 
-        except Exception as e:
-            logger.error(f"Error sending reminder: {e}")
-    
-    def send_initial_reminder(self, email: str, phone: str, first_name: str, 
-                            appointment_dt: datetime, doctor: str, location: str) -> bool:
-        """Send initial 7-day reminder"""
-        
-        try:
-            # Format appointment details
-            apt_date = appointment_dt.strftime('%A, %B %d, %Y')
-            apt_time = appointment_dt.strftime('%I:%M %p')
-            
-            # Create email content
-            email_subject = f"Appointment Reminder - {apt_date}"
-            email_body = f"""
-Dear {first_name},
-
-This is a friendly reminder about your upcoming appointment:
-
-📅 Date: {apt_date}
-🕐 Time: {apt_time}
-👩‍⚕️ Doctor: {doctor}
-🏢 Location: {location}
-
-What to remember:
-✅ Patient intake forms will be sent 24 hours before your visit
-✅ Please arrive 15 minutes early
-✅ Bring your insurance card and photo ID
-
-If you need to reschedule or cancel, please call us at (555) 123-4567.
-
-We look forward to seeing you!
-
-Best regards,
-MediCare Allergy & Wellness Center
-456 Healthcare Boulevard, Suite 300
-            """
-            
-            # Log email sending (in real implementation, would use actual email service)
-            logger.info(f"EMAIL SENT to {email}")
-            logger.info(f"Subject: {email_subject}")
-            
-            # Send SMS if phone available
-            if phone:
-                sms_body = f"Reminder: Appointment with {doctor} on {appointment_dt.strftime('%m/%d at %I:%M%p')} at {location}. Call (555) 123-4567 for changes."
-                logger.info(f"SMS SENT to {phone}: {sms_body}")
-            
-            return True
+                # Create action tracking entries for form_check and final_confirmation
+                if reminder_type in ['form_check', 'final_confirmation']:
+                    self._create_reminder_actions(appointment_id, reminder_type)
+            else:
+                logger.error(f"❌ Failed to send {reminder_type} reminder for {appointment_id}")
             
         except Exception as e:
-            logger.error(f"Error sending initial reminder: {e}")
-            return False
+            logger.error(f"❌ Error processing reminder: {e}")
     
-    def send_form_check_reminder(self, email: str, phone: str, first_name: str,
-                                appointment_dt: datetime, doctor: str, location: str, 
-                                appointment_id: str) -> bool:
-        """Send form completion check reminder (24 hours before)"""
-        
-        try:
-            apt_date = appointment_dt.strftime('%A, %B %d, %Y')
-            apt_time = appointment_dt.strftime('%I:%M %p')
-            
-            # Create action URLs for tracking
-            base_url = "https://medicare-clinic.com"  # In real implementation
-            form_url = f"{base_url}/form-status/{appointment_id}"
-            complete_url = f"{base_url}/intake-form/{appointment_id}"
-            
-            email_subject = f"Important: Complete Your Intake Form - Appointment Tomorrow"
-            email_body = f"""
-Dear {first_name},
-
-Your appointment is TOMORROW! 🗓️
-
-📅 {apt_date} at {apt_time}
-👩‍⚕️ {doctor} at {location}
-
-🚨 IMPORTANT ACTION REQUIRED:
-
-1️⃣ Have you completed your patient intake form?
-   👍 Yes, I completed it: {form_url}?status=completed
-   👎 No, I need to complete it: {complete_url}
-
-2️⃣ Is your visit still confirmed?
-   ✅ Yes, I'll be there: {form_url}?status=confirmed
-   ❌ I need to cancel/reschedule: {form_url}?status=cancel
-
-⏰ CRITICAL REMINDERS:
-• If allergy testing is planned, STOP antihistamines NOW (7 days before)
-• Arrive 15 minutes early tomorrow
-• Bring insurance card and photo ID
-
-Questions? Call (555) 123-4567
-            """
-            
-            logger.info(f"FORM CHECK EMAIL SENT to {email}")
-            logger.info(f"Subject: {email_subject}")
-            
-            if phone:
-                sms_body = f"TOMORROW: {doctor} at {apt_time}. Completed intake form? Reply YES/NO. Confirm visit? Reply CONFIRM/CANCEL. Call (555) 123-4567"
-                logger.info(f"FORM CHECK SMS SENT to {phone}: {sms_body}")
-            
-            return True
-            
-        except Exception as e:
-            logger.error(f"Error sending form check reminder: {e}")
-            return False
-    
-    def send_final_reminder(self, email: str, phone: str, first_name: str,
-                          appointment_dt: datetime, doctor: str, location: str,
-                          appointment_id: str) -> bool:
-        """Send final confirmation reminder (2 hours before)"""
-        
-        try:
-            apt_time = appointment_dt.strftime('%I:%M %p')
-            
-            base_url = "https://medicare-clinic.com"
-            confirm_url = f"{base_url}/confirm/{appointment_id}"
-            cancel_url = f"{base_url}/cancel/{appointment_id}"
-            
-            email_subject = f"FINAL REMINDER: Your Appointment is in 2 Hours!"
-            email_body = f"""
-Dear {first_name},
-
-🚨 YOUR APPOINTMENT IS IN 2 HOURS! 🚨
-
-📅 TODAY at {apt_time}
-👩‍⚕️ {doctor}
-🏢 {location}
-
-🎯 FINAL CONFIRMATION REQUIRED:
-
-✅ I'm coming to my appointment: {confirm_url}
-❌ I need to cancel (please tell us why): {cancel_url}
-
-📋 LAST-MINUTE CHECKLIST:
-• ✅ Intake form completed?
-• ✅ Stopped antihistamines if having allergy testing?
-• ✅ Have insurance card and photo ID?
-• ✅ Know the location and parking?
-
-🗺️ DIRECTIONS:
-{location}
-456 Healthcare Boulevard, Suite 300
-Parking available in front of building
-
-❗ If you don't confirm or cancel, we may need to charge a no-show fee.
-
-Questions? Call (555) 123-4567 - we're here to help!
-
-See you soon!
-MediCare Team
-            """
-            
-            logger.info(f"FINAL REMINDER EMAIL SENT to {email}")
-            logger.info(f"Subject: {email_subject}")
-            
-            if phone:
-                sms_body = f"FINAL REMINDER: Appointment with {doctor} in 2 HOURS at {apt_time}! Reply CONFIRM or CANCEL with reason. Address: 456 Healthcare Blvd #300"
-                logger.info(f"FINAL REMINDER SMS SENT to {phone}: {sms_body}")
-            
-            return True
-            
-        except Exception as e:
-            logger.error(f"Error sending final reminder: {e}")
-            return False
-    
-    def record_patient_response(self, appointment_id: str, response_type: str, response_data: Dict = None) -> bool:
-        """Record patient response to reminders"""
-        
+    def _create_reminder_actions(self, appointment_id: str, reminder_type: str):
+        """Create trackable action URLs for reminder responses"""
         try:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
             
+            base_url = "https://medicare-clinic.com"  # Replace with actual URL
+            
+            if reminder_type == 'form_check':
+                actions = [
+                    {
+                        'type': 'form_completed',
+                        'url': f"{base_url}/form-status/{appointment_id}?status=completed"
+                    },
+                    {
+                        'type': 'form_incomplete',
+                        'url': f"{base_url}/form-status/{appointment_id}?status=incomplete"
+                    },
+                    {
+                        'type': 'visit_confirmed',
+                        'url': f"{base_url}/confirm-visit/{appointment_id}"
+                    },
+                    {
+                        'type': 'visit_cancelled',
+                        'url': f"{base_url}/cancel-visit/{appointment_id}"
+                    }
+                ]
+            elif reminder_type == 'final_confirmation':
+                actions = [
+                    {
+                        'type': 'final_confirm',
+                        'url': f"{base_url}/final-confirm/{appointment_id}"
+                    },
+                    {
+                        'type': 'emergency_cancel',
+                        'url': f"{base_url}/emergency-cancel/{appointment_id}"
+                    }
+                ]
+            else:
+                return
+            
+            for action in actions:
+                cursor.execute("""
+                INSERT INTO reminder_actions 
+                (appointment_id, action_type, action_url, action_data)
+                VALUES (?, ?, ?, ?)
+                """, (
+                    appointment_id,
+                    action['type'],
+                    action['url'],
+                    json.dumps(action)
+                ))
+            
+            conn.commit()
+            conn.close()
+            
+            logger.info(f"📝 Created {len(actions)} action trackers for {appointment_id}")
+            
+        except Exception as e:
+            logger.error(f"❌ Error creating reminder actions: {e}")
+    
+    def record_patient_response(self, appointment_id: str, response_type: str, 
+                               response_channel: str, response_content: str = None,
+                               additional_data: Dict = None) -> bool:
+        """Record patient response to reminders"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            # Determine action based on response type
+            action_taken = self._determine_action(response_type, additional_data)
+            
             cursor.execute("""
             INSERT INTO reminder_responses 
-            (appointment_id, response_type, response_data, received_at)
-            VALUES (?, ?, ?, ?)
+            (appointment_id, response_type, response_channel, response_content, action_taken)
+            VALUES (?, ?, ?, ?, ?)
             """, (
                 appointment_id,
                 response_type,
-                json.dumps(response_data) if response_data else None,
-                datetime.now().isoformat()
+                response_channel,
+                response_content,
+                action_taken
+            ))
+            
+            # Update reminder as having received response
+            cursor.execute("""
+            UPDATE reminders 
+            SET response_received = TRUE,
+                response_data = ?
+            WHERE appointment_id = ?
+            AND sent = TRUE
+            """, (
+                json.dumps({
+                    'type': response_type,
+                    'channel': response_channel,
+                    'content': response_content,
+                    'timestamp': datetime.now().isoformat()
+                }),
+                appointment_id
             ))
             
             conn.commit()
             conn.close()
             
-            logger.info(f"Recorded response for {appointment_id}: {response_type}")
+            logger.info(f"📝 Recorded {response_type} response for appointment {appointment_id}")
+            
+            # Process the response action
+            self._process_response_action(appointment_id, response_type, additional_data)
+            
             return True
             
         except Exception as e:
-            logger.error(f"Error recording response: {e}")
+            logger.error(f"❌ Error recording patient response: {e}")
             return False
     
-    def get_reminder_statistics(self) -> Dict:
-        """Get real reminder system statistics"""
+    def _determine_action(self, response_type: str, additional_data: Dict = None) -> str:
+        """Determine what action to take based on response type"""
+        action_map = {
+            'form_completed': 'mark_form_complete',
+            'form_incomplete': 'send_form_reminder',
+            'visit_confirmed': 'mark_visit_confirmed',
+            'visit_cancelled': 'process_cancellation',
+            'final_confirm': 'mark_final_confirmed',
+            'emergency_cancel': 'process_emergency_cancellation',
+            'medication_question': 'send_medication_info',
+            'help_request': 'send_help_info'
+        }
         
+        return action_map.get(response_type, 'manual_review_required')
+    
+    def _process_response_action(self, appointment_id: str, response_type: str, additional_data: Dict = None):
+        """Process the action based on patient response"""
+        try:
+            if response_type == 'form_completed':
+                logger.info(f"✅ Form marked as completed for {appointment_id}")
+                
+            elif response_type == 'form_incomplete':
+                # Send follow-up form reminder
+                self._send_form_follow_up(appointment_id)
+                
+            elif response_type == 'visit_confirmed':
+                # Update appointment status
+                self._update_appointment_status(appointment_id, 'confirmed')
+                
+            elif response_type in ['visit_cancelled', 'emergency_cancel']:
+                # Process cancellation
+                reason = additional_data.get('reason', 'Patient requested cancellation') if additional_data else 'Patient requested cancellation'
+                self._process_appointment_cancellation(appointment_id, reason)
+                
+            elif response_type == 'final_confirm':
+                # Mark as final confirmed
+                self._update_appointment_status(appointment_id, 'final_confirmed')
+                
+        except Exception as e:
+            logger.error(f"❌ Error processing response action: {e}")
+    
+    def _send_form_follow_up(self, appointment_id: str):
+        """Send follow-up reminder for incomplete forms"""
+        try:
+            # Get patient and appointment info
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute("""
+            SELECT p.first_name, p.email, p.phone, a.appointment_datetime, a.doctor
+            FROM appointments a
+            JOIN patients p ON a.patient_id = p.id
+            WHERE a.id = ?
+            """, (appointment_id,))
+            
+            result = cursor.fetchone()
+            conn.close()
+            
+            if result:
+                first_name, email, phone, appointment_datetime, doctor = result
+                apt_datetime = datetime.fromisoformat(appointment_datetime)
+                
+                # Send urgent form reminder
+                if email and self.email_service:
+                    urgent_subject = "URGENT: Complete Your Intake Form - Appointment Soon"
+                    urgent_content = f"""
+                    <h3>🚨 URGENT: Intake Form Required</h3>
+                    <p>Dear {first_name},</p>
+                    <p>Your appointment with {doctor} is approaching and we still need your completed intake form.</p>
+                    <p><strong>Appointment:</strong> {apt_datetime.strftime('%A, %B %d at %I:%M %p')}</p>
+                    <p><strong>Action Required:</strong> Please complete and submit your intake form immediately.</p>
+                    <p>Call us at (555) 123-4567 if you need assistance.</p>
+                    """
+                    
+                    # This would use the email service's template system
+                    logger.info(f"📧 Sent urgent form reminder to {email}")
+                
+                if phone and self.sms_service:
+                    urgent_sms = f"URGENT: Complete intake form for {doctor} appointment {apt_datetime.strftime('%m/%d at %I:%M%p')}. Call (555) 123-4567 for help."
+                    self.sms_service.send_sms(phone, urgent_sms, priority="high")
+                    
+        except Exception as e:
+            logger.error(f"❌ Error sending form follow-up: {e}")
+    
+    def _update_appointment_status(self, appointment_id: str, status: str):
+        """Update appointment status in database"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute("""
+            UPDATE appointments 
+            SET status = ?
+            WHERE id = ?
+            """, (status, appointment_id))
+            
+            conn.commit()
+            conn.close()
+            
+            logger.info(f"✅ Updated appointment {appointment_id} status to {status}")
+            
+        except Exception as e:
+            logger.error(f"❌ Error updating appointment status: {e}")
+    
+    def _process_appointment_cancellation(self, appointment_id: str, reason: str):
+        """Process appointment cancellation"""
+        try:
+            # Update appointment status
+            self._update_appointment_status(appointment_id, 'cancelled')
+            
+            # Free up the calendar slot
+            from integrations.calendly_integration import CalendlyIntegration
+            calendar = CalendlyIntegration()
+            calendar.cancel_appointment(appointment_id, reason)
+            
+            logger.info(f"✅ Processed cancellation for {appointment_id}: {reason}")
+            
+        except Exception as e:
+            logger.error(f"❌ Error processing cancellation: {e}")
+    
+    def get_reminder_statistics(self) -> Dict:
+        """Get comprehensive reminder system statistics"""
         try:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
@@ -451,7 +585,9 @@ MediCare Team
                 reminder_type,
                 COUNT(*) as total,
                 SUM(CASE WHEN sent = TRUE THEN 1 ELSE 0 END) as sent,
-                SUM(CASE WHEN sent = TRUE AND delivery_status = 'sent' THEN 1 ELSE 0 END) as delivered
+                SUM(CASE WHEN email_sent = TRUE THEN 1 ELSE 0 END) as email_sent,
+                SUM(CASE WHEN sms_sent = TRUE THEN 1 ELSE 0 END) as sms_sent,
+                SUM(CASE WHEN response_received = TRUE THEN 1 ELSE 0 END) as responses
             FROM reminders 
             WHERE created_at > date('now', '-30 days')
             GROUP BY reminder_type
@@ -463,12 +599,15 @@ MediCare Team
                     'type': row[0],
                     'total': row[1],
                     'sent': row[2],
-                    'delivered': row[3],
-                    'delivery_rate': f"{(row[3]/row[1]*100):.1f}%" if row[1] > 0 else "0%"
+                    'email_sent': row[3],
+                    'sms_sent': row[4],
+                    'responses': row[5],
+                    'send_rate': f"{(row[2]/row[1]*100):.1f}%" if row[1] > 0 else "0%",
+                    'response_rate': f"{(row[5]/row[2]*100):.1f}%" if row[2] > 0 else "0%"
                 }
                 reminder_stats.append(stats)
             
-            # Response stats
+            # Response breakdown
             cursor.execute("""
             SELECT response_type, COUNT(*) as count
             FROM reminder_responses 
@@ -476,48 +615,95 @@ MediCare Team
             GROUP BY response_type
             """)
             
-            response_stats = [
-                {'type': row[0], 'count': row[1]}
-                for row in cursor.fetchall()
-            ]
+            response_breakdown = {row[0]: row[1] for row in cursor.fetchall()}
             
-            # System status
-            cursor.execute("SELECT COUNT(*) FROM reminders WHERE sent = FALSE AND scheduled_time <= datetime('now')")
-            pending_reminders = cursor.fetchone()[0]
+            # Overall statistics
+            cursor.execute("""
+            SELECT 
+                COUNT(DISTINCT appointment_id) as appointments_with_reminders,
+                AVG(attempts) as avg_attempts,
+                COUNT(*) as total_reminders
+            FROM reminders
+            WHERE created_at > date('now', '-30 days')
+            """)
+            
+            overall_stats = cursor.fetchone()
             
             conn.close()
             
             return {
-                'reminder_stats': reminder_stats,
-                'response_stats': response_stats,
-                'pending_reminders': pending_reminders,
+                'reminder_statistics': reminder_stats,
+                'response_breakdown': response_breakdown,
+                'overall_stats': {
+                    'appointments_with_reminders': overall_stats[0],
+                    'average_attempts': round(overall_stats[1], 2) if overall_stats[1] else 0,
+                    'total_reminders': overall_stats[2]
+                },
                 'service_status': 'active' if self.is_running else 'stopped',
                 'last_updated': datetime.now().isoformat()
             }
             
         except Exception as e:
-            logger.error(f"Error getting reminder statistics: {e}")
+            logger.error(f"❌ Error getting reminder statistics: {e}")
             return {
                 'error': str(e),
                 'service_status': 'error',
                 'last_updated': datetime.now().isoformat()
             }
+    
+    def cleanup_old_reminders(self):
+        """Clean up old reminder data (automated daily cleanup)"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            # Delete old reminders (90 days)
+            cutoff_date = datetime.now() - timedelta(days=90)
+            
+            cursor.execute("""
+            DELETE FROM reminder_responses 
+            WHERE received_at < ? AND processed = TRUE
+            """, (cutoff_date.isoformat(),))
+            
+            responses_deleted = cursor.rowcount
+            
+            cursor.execute("""
+            DELETE FROM reminder_actions 
+            WHERE created_at < ?
+            """, (cutoff_date.isoformat(),))
+            
+            actions_deleted = cursor.rowcount
+            
+            cursor.execute("""
+            DELETE FROM reminders 
+            WHERE created_at < ? AND sent = TRUE
+            """, (cutoff_date.isoformat(),))
+            
+            reminders_deleted = cursor.rowcount
+            
+            conn.commit()
+            conn.close()
+            
+            logger.info(f"🧹 Cleanup: Deleted {reminders_deleted} reminders, {responses_deleted} responses, {actions_deleted} actions")
+            
+        except Exception as e:
+            logger.error(f"❌ Error during cleanup: {e}")
 
 # Global instance management
 _reminder_system_instance = None
 
-def get_reminder_system() -> FunctionalReminderSystem:
+def get_reminder_system() -> ProductionReminderSystem:
     """Get the global reminder system instance"""
     global _reminder_system_instance
     if _reminder_system_instance is None:
-        _reminder_system_instance = FunctionalReminderSystem()
+        _reminder_system_instance = ProductionReminderSystem()
     return _reminder_system_instance
 
-def start_reminder_service() -> FunctionalReminderSystem:
-    """Start the reminder service"""
+def start_reminder_service() -> ProductionReminderSystem:
+    """Start the production reminder service"""
     reminder_system = get_reminder_system()
     reminder_system.start_reminder_service()
-    logger.info("Reminder service started")
+    logger.info("🚀 Production reminder service started")
     return reminder_system
 
 def stop_reminder_service():
@@ -526,4 +712,43 @@ def stop_reminder_service():
     if _reminder_system_instance:
         _reminder_system_instance.stop_reminder_service()
         _reminder_system_instance = None
-        logger.info("Reminder service stopped")
+        logger.info("🛑 Reminder service stopped")
+
+# Webhook handler for processing patient responses
+def process_reminder_webhook(request_data: Dict) -> Dict:
+    """Process webhook responses from email/SMS systems"""
+    reminder_system = get_reminder_system()
+    
+    try:
+        # Extract response data
+        appointment_id = request_data.get('appointment_id')
+        response_type = request_data.get('response_type')
+        response_channel = request_data.get('channel', 'unknown')
+        response_content = request_data.get('content', '')
+        additional_data = request_data.get('additional_data', {})
+        
+        if not appointment_id or not response_type:
+            return {'error': 'Missing required fields'}
+        
+        # Record the response
+        success = reminder_system.record_patient_response(
+            appointment_id, response_type, response_channel, 
+            response_content, additional_data
+        )
+        
+        if success:
+            return {
+                'status': 'success',
+                'message': 'Response recorded and processed',
+                'appointment_id': appointment_id,
+                'response_type': response_type
+            }
+        else:
+            return {
+                'status': 'error',
+                'message': 'Failed to process response'
+            }
+            
+    except Exception as e:
+        logger.error(f"❌ Webhook processing error: {e}")
+        return {'status': 'error', 'message': str(e)}

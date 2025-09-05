@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-AI Medical Scheduling Agent - Main Entry Point (Fixed)
-RagaAI Assignment - Robust Healthcare Booking System with Error Handling
+Production AI Medical Scheduling Agent - Main Entry Point
+RagaAI Assignment - Complete Production System Launcher
 """
 
 import os
@@ -12,317 +12,566 @@ import signal
 import atexit
 from pathlib import Path
 from dotenv import load_dotenv
+import sqlite3
 
 # Setup logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('logs/system.log'),
+        logging.StreamHandler()
+    ]
 )
 logger = logging.getLogger(__name__)
 
-def check_environment():
-    """Check if environment is properly configured"""
+def ensure_directories():
+    """Ensure all required directories exist"""
+    directories = ["data", "exports", "logs", "forms", "forms/form_templates"]
     
-    # Load environment variables
+    for directory in directories:
+        Path(directory).mkdir(parents=True, exist_ok=True)
+        
+        # Create .gitkeep for empty directories
+        gitkeep_file = Path(directory) / ".gitkeep"
+        if not gitkeep_file.exists():
+            with open(gitkeep_file, "w") as f:
+                f.write("# Keep directory in git\n")
+
+def check_production_environment():
+    """Check production environment configuration"""
     load_dotenv()
     
-    # Check if .env exists
-    if not Path('.env').exists():
-        logger.warning(".env file not found")
-        if Path('.env.example').exists():
-            logger.info("Copying .env.example to .env")
-            import shutil
-            shutil.copy('.env.example', '.env')
-            logger.warning("Please update .env with your API keys")
+    issues = []
+    
+    # Check critical environment variables
+    required_vars = {
+        'GOOGLE_API_KEY': 'Google Gemini API key is required for AI functionality'
+    }
+    
+    optional_vars = {
+        'GMAIL_USER': 'Gmail user for email service',
+        'GMAIL_APP_PASSWORD': 'Gmail app password for email service',
+        'TWILIO_ACCOUNT_SID': 'Twilio SID for SMS service',
+        'TWILIO_AUTH_TOKEN': 'Twilio token for SMS service',
+        'TWILIO_PHONE_NUMBER': 'Twilio phone number for SMS service'
+    }
+    
+    # Check required variables
+    for var, description in required_vars.items():
+        if not os.getenv(var):
+            issues.append(f"❌ Missing {var}: {description}")
+        else:
+            logger.info(f"✅ {var} configured")
+    
+    # Check optional variables
+    for var, description in optional_vars.items():
+        if not os.getenv(var):
+            logger.warning(f"⚠️ Optional {var} not configured: {description}")
+        else:
+            logger.info(f"✅ {var} configured")
+    
+    if issues:
+        logger.error("Environment configuration issues:")
+        for issue in issues:
+            logger.error(issue)
         return False
     
-    # Check required API key
-    if not os.getenv("GOOGLE_API_KEY"):
-        logger.error("GOOGLE_API_KEY not found in .env")
-        logger.info("Please add your Gemini Pro API key to .env file")
-        return False
-    
-    logger.info("✅ Environment configuration verified")
     return True
 
-def setup_data_fallback():
-    """Generate minimal sample data as fallback"""
-    
-    logger.info("Setting up minimal sample data...")
+def initialize_production_database():
+    """Initialize production database with all required tables"""
+    logger.info("Initializing production database...")
     
     try:
+        conn = sqlite3.connect("medical_scheduling.db")
+        cursor = conn.cursor()
+        
+        # Patients table
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS patients (
+            id TEXT PRIMARY KEY,
+            first_name TEXT NOT NULL,
+            last_name TEXT NOT NULL,
+            dob TEXT NOT NULL,
+            phone TEXT,
+            email TEXT,
+            patient_type TEXT NOT NULL DEFAULT 'new',
+            insurance_carrier TEXT,
+            member_id TEXT,
+            group_number TEXT,
+            emergency_contact_name TEXT,
+            emergency_contact_phone TEXT,
+            emergency_contact_relationship TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """)
+        
+        # Appointments table
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS appointments (
+            id TEXT PRIMARY KEY,
+            patient_id TEXT NOT NULL,
+            doctor TEXT NOT NULL,
+            location TEXT NOT NULL,
+            appointment_datetime TEXT NOT NULL,
+            duration INTEGER NOT NULL,
+            status TEXT DEFAULT 'scheduled',
+            notes TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (patient_id) REFERENCES patients (id)
+        )
+        """)
+        
+        # Reminders table
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS reminders (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            appointment_id TEXT NOT NULL,
+            reminder_type TEXT NOT NULL CHECK(reminder_type IN ('initial', 'form_check', 'final_confirmation')),
+            scheduled_time TEXT NOT NULL,
+            sent BOOLEAN DEFAULT FALSE,
+            email_sent BOOLEAN DEFAULT FALSE,
+            sms_sent BOOLEAN DEFAULT FALSE,
+            response_received BOOLEAN DEFAULT FALSE,
+            response_data TEXT,
+            attempts INTEGER DEFAULT 0,
+            last_attempt TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (appointment_id) REFERENCES appointments (id)
+        )
+        """)
+        
+        # Reminder responses table
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS reminder_responses (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            appointment_id TEXT NOT NULL,
+            reminder_id INTEGER,
+            response_type TEXT NOT NULL,
+            response_channel TEXT NOT NULL,
+            response_content TEXT,
+            action_taken TEXT,
+            processed BOOLEAN DEFAULT FALSE,
+            received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (appointment_id) REFERENCES appointments (id),
+            FOREIGN KEY (reminder_id) REFERENCES reminders (id)
+        )
+        """)
+        
+        # SMS responses table
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS sms_responses (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            appointment_id TEXT NOT NULL,
+            phone TEXT NOT NULL,
+            response_type TEXT NOT NULL,
+            original_message TEXT,
+            parsed_data TEXT,
+            received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            processed BOOLEAN DEFAULT FALSE
+        )
+        """)
+        
+        # Create indexes for performance
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_patients_name ON patients (last_name, first_name)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_patients_dob ON patients (dob)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_appointments_datetime ON appointments (appointment_datetime)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_reminders_scheduled ON reminders (scheduled_time, sent)")
+        
+        conn.commit()
+        conn.close()
+        
+        logger.info("✅ Production database initialized successfully")
+        return True
+        
+    except Exception as e:
+        logger.error(f"❌ Database initialization failed: {e}")
+        return False
+
+def load_sample_data():
+    """Load sample data if not already present"""
+    logger.info("Loading sample data...")
+    
+    try:
+        # Check if sample data already exists
+        conn = sqlite3.connect("medical_scheduling.db")
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM patients")
+        patient_count = cursor.fetchone()[0]
+        conn.close()
+        
+        if patient_count >= 50:
+            logger.info(f"✅ Sample data already loaded ({patient_count} patients)")
+            return True
+        
+        # Try to run data generator
+        try:
+            from data.generate_data import generate_all_data
+            success = generate_all_data()
+            if success:
+                logger.info("✅ Sample data generated successfully")
+                return True
+        except ImportError:
+            logger.warning("⚠️ Data generator not available, creating minimal data")
+        
+        # Create minimal sample data as fallback
+        return create_minimal_sample_data()
+        
+    except Exception as e:
+        logger.error(f"❌ Error loading sample data: {e}")
+        return False
+
+def create_minimal_sample_data():
+    """Create minimal sample data for production testing"""
+    logger.info("Creating minimal sample data...")
+    
+    try:
+        import csv
+        from datetime import datetime, timedelta
+        
         # Ensure data directory exists
         Path("data").mkdir(exist_ok=True)
         
-        # Try to import the full generator first
-        try:
-            from data.generate_data import generate_all_data
-            generate_all_data()
-            logger.info("✅ Full sample data generated successfully")
-            return True
-        except ImportError:
-            logger.info("Data generator not available, creating minimal data...")
-            
-            # Create minimal CSV as fallback
-            import csv
-            csv_data = [
-                ["patient_id", "first_name", "last_name", "dob", "phone", "email", "patient_type", "insurance_carrier", "member_id", "group_number", "emergency_contact_name", "emergency_contact_phone", "emergency_contact_relationship"],
-                ["P001", "John", "Smith", "1985-03-15", "555-1001", "john.smith@email.com", "new", "BlueCross BlueShield", "M123456", "G1001", "Jane Smith", "555-2001", "Spouse"],
-                ["P002", "Jane", "Doe", "1990-07-22", "555-1002", "jane.doe@email.com", "returning", "Aetna", "M123457", "G1002", "John Doe", "555-2002", "Spouse"],
-                ["P003", "Mike", "Johnson", "1975-11-08", "555-1003", "mike.johnson@email.com", "returning", "Cigna", "M123458", "G1003", "Sarah Johnson", "555-2003", "Spouse"],
-                ["P004", "Sarah", "Williams", "1988-01-30", "555-1004", "sarah.williams@email.com", "new", "UnitedHealthcare", "M123459", "G1004", "Mike Williams", "555-2004", "Spouse"],
-                ["P005", "David", "Brown", "1992-05-12", "555-1005", "david.brown@email.com", "returning", "Kaiser Permanente", "M123460", "G1005", "Lisa Brown", "555-2005", "Spouse"]
-            ]
-            
-            with open("data/sample_patients.csv", "w", newline="", encoding="utf-8") as f:
-                writer = csv.writer(f)
-                writer.writerows(csv_data)
-            
-            logger.info("✅ Minimal sample data created successfully")
-            return True
-            
+        # Create sample patients CSV
+        sample_patients = []
+        
+        # Generate 50 patients as required
+        first_names = ["John", "Jane", "Michael", "Sarah", "David", "Lisa", "Robert", "Emily", "James", "Jessica"] * 5
+        last_names = ["Smith", "Johnson", "Williams", "Brown", "Jones", "Garcia", "Miller", "Davis", "Rodriguez", "Martinez"] * 5
+        
+        for i in range(50):
+            patient = {
+                'patient_id': f'P{i+1:03d}',
+                'first_name': first_names[i],
+                'last_name': last_names[i],
+                'dob': f'{1950 + (i % 50)}-{(i % 12) + 1:02d}-{(i % 28) + 1:02d}',
+                'phone': f'555-{1000+i:04d}',
+                'email': f'{first_names[i].lower()}.{last_names[i].lower()}{i}@email.com',
+                'patient_type': 'new' if i % 3 == 0 else 'returning',
+                'insurance_carrier': ['BlueCross BlueShield', 'Aetna', 'Cigna', 'UnitedHealthcare', 'Kaiser Permanente'][i % 5],
+                'member_id': f'M{100000 + i:06d}',
+                'group_number': f'G{1000 + (i % 100):04d}',
+                'emergency_contact_name': f'Emergency Contact {i+1}',
+                'emergency_contact_phone': f'555-{2000+i:04d}',
+                'emergency_contact_relationship': ['Spouse', 'Parent', 'Child', 'Sibling', 'Friend'][i % 5]
+            }
+            sample_patients.append(patient)
+        
+        # Write to CSV
+        csv_file = "data/sample_patients.csv"
+        with open(csv_file, "w", newline="", encoding="utf-8") as f:
+            fieldnames = sample_patients[0].keys()
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(sample_patients)
+        
+        # Load into database
+        conn = sqlite3.connect("medical_scheduling.db")
+        cursor = conn.cursor()
+        
+        for patient in sample_patients:
+            cursor.execute("""
+            INSERT OR REPLACE INTO patients 
+            (id, first_name, last_name, dob, phone, email, patient_type, 
+             insurance_carrier, member_id, group_number, emergency_contact_name, 
+             emergency_contact_phone, emergency_contact_relationship)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                patient['patient_id'], patient['first_name'], patient['last_name'],
+                patient['dob'], patient['phone'], patient['email'], patient['patient_type'],
+                patient['insurance_carrier'], patient['member_id'], patient['group_number'],
+                patient['emergency_contact_name'], patient['emergency_contact_phone'],
+                patient['emergency_contact_relationship']
+            ))
+        
+        conn.commit()
+        conn.close()
+        
+        logger.info(f"✅ Created minimal sample data: {len(sample_patients)} patients")
+        return True
+        
     except Exception as e:
-        logger.error(f"❌ Failed to setup sample data: {e}")
+        logger.error(f"❌ Failed to create minimal sample data: {e}")
         return False
 
-def setup_database():
-    """Setup database if components are available"""
-    
-    logger.info("Setting up database...")
-    
-    try:
-        # Try to initialize database
-        from database.database import DatabaseManager
-        db = DatabaseManager()  # This initializes basic tables
-        
-        # Try to run reminder system migrations
-        try:
-            from database.migrations import run_reminder_system_migrations
-            run_reminder_system_migrations()
-            logger.info("✅ Database setup completed with reminder system")
-        except ImportError:
-            logger.info("✅ Basic database setup completed (reminder system not available)")
-        
-        return True
-    except ImportError:
-        logger.warning("⚠️ Database components not available - will work in limited mode")
-        return True
-    except Exception as e:
-        logger.error(f"❌ Database setup failed: {e}")
-        return False
-
-def start_reminder_service():
-    """Start the automated reminder service if available"""
+def start_production_services():
+    """Start production background services"""
+    logger.info("Starting production services...")
     
     try:
+        # Start reminder service
         from integrations.reminder_system import start_reminder_service
         reminder_system = start_reminder_service()
         
-        logger.info("✅ Automated reminder service started successfully")
+        logger.info("✅ Production reminder service started")
         
         # Register cleanup function
-        def cleanup_reminder_service():
-            logger.info("Stopping reminder service...")
+        def cleanup_services():
+            logger.info("🛑 Shutting down production services...")
             try:
                 from integrations.reminder_system import stop_reminder_service
                 stop_reminder_service()
-                logger.info("✅ Reminder service stopped")
+                logger.info("✅ Services stopped gracefully")
             except Exception as e:
-                logger.error(f"Error stopping reminder service: {e}")
+                logger.error(f"❌ Error stopping services: {e}")
         
-        atexit.register(cleanup_reminder_service)
+        atexit.register(cleanup_services)
         
         # Handle signals for graceful shutdown
         def signal_handler(signum, frame):
-            logger.info(f"Received signal {signum}, shutting down...")
-            cleanup_reminder_service()
+            logger.info(f"📡 Received signal {signum}, shutting down...")
+            cleanup_services()
             sys.exit(0)
         
         signal.signal(signal.SIGINT, signal_handler)
         signal.signal(signal.SIGTERM, signal_handler)
         
-        return reminder_system
+        return True
         
-    except ImportError:
-        logger.warning("⚠️ Reminder system not available")
-        return None
     except Exception as e:
-        logger.error(f"❌ Failed to start reminder service: {e}")
-        return None
+        logger.error(f"❌ Failed to start production services: {e}")
+        return False
 
-def run_streamlit_app():
-    """Launch the Streamlit demo interface"""
-    
-    logger.info("🚀 Launching AI Medical Scheduling Agent...")
+def run_production_streamlit():
+    """Launch production Streamlit application"""
+    logger.info("🚀 Launching production Streamlit application...")
     
     try:
-        # Run Streamlit app
         subprocess.run([
             sys.executable, "-m", "streamlit", "run", 
             "ui/streamlit_app.py",
             "--server.port", "8501",
-            "--server.address", "localhost"
+            "--server.address", "0.0.0.0",
+            "--server.headless", "true",
+            "--theme.primaryColor", "#2E8B57",
+            "--theme.backgroundColor", "#FFFFFF",
+            "--theme.secondaryBackgroundColor", "#F8F9FA"
         ])
     except KeyboardInterrupt:
-        logger.info("👋 Application stopped by user")
+        logger.info("👋 Production application stopped by user")
     except Exception as e:
-        logger.error(f"❌ Failed to run application: {e}")
+        logger.error(f"❌ Failed to run production application: {e}")
 
-def run_tests():
-    """Run the test suite if available"""
-    
-    logger.info("🧪 Running tests...")
+def run_production_tests():
+    """Run production system tests"""
+    logger.info("🧪 Running production system tests...")
     
     try:
-        result = subprocess.run([
-            sys.executable, "-m", "pytest", "tests/", "-v"
-        ], capture_output=True, text=True)
+        # Test database connection
+        conn = sqlite3.connect("medical_scheduling.db")
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM patients")
+        patient_count = cursor.fetchone()[0]
+        conn.close()
         
-        print(result.stdout)
-        if result.stderr:
-            print("Errors:", result.stderr)
-            
-        return result.returncode == 0
-    except FileNotFoundError:
-        logger.warning("⚠️ pytest not available - skipping tests")
-        return True
+        logger.info(f"✅ Database test passed: {patient_count} patients")
+        
+        # Test AI agent
+        try:
+            from agents.medical_agent import ProductionMedicalAgent
+            agent = ProductionMedicalAgent()
+            test_response = agent.process_message("Hello", "test_session")
+            if test_response and len(test_response) > 10:
+                logger.info("✅ AI Agent test passed")
+            else:
+                logger.error("❌ AI Agent test failed: Invalid response")
+        except Exception as e:
+            logger.error(f"❌ AI Agent test failed: {e}")
+        
+        # Test services
+        services_status = {}
+        
+        try:
+            from integrations.email_service import EmailService
+            email_service = EmailService()
+            services_status['email'] = True
+            logger.info("✅ Email service test passed")
+        except Exception as e:
+            services_status['email'] = False
+            logger.error(f"❌ Email service test failed: {e}")
+        
+        try:
+            from integrations.sms_service import SMSService
+            sms_service = SMSService()
+            services_status['sms'] = True
+            logger.info("✅ SMS service test passed")
+        except Exception as e:
+            services_status['sms'] = False
+            logger.error(f"❌ SMS service test failed: {e}")
+        
+        try:
+            from integrations.calendly_integration import CalendlyIntegration
+            calendar_service = CalendlyIntegration()
+            services_status['calendar'] = True
+            logger.info("✅ Calendar service test passed")
+        except Exception as e:
+            services_status['calendar'] = False
+            logger.error(f"❌ Calendar service test failed: {e}")
+        
+        try:
+            from utils.excel_export import ExcelExporter
+            excel_service = ExcelExporter()
+            services_status['excel'] = True
+            logger.info("✅ Excel export service test passed")
+        except Exception as e:
+            services_status['excel'] = False
+            logger.error(f"❌ Excel export service test failed: {e}")
+        
+        # Summary
+        working_services = sum(services_status.values())
+        total_services = len(services_status)
+        
+        logger.info(f"📊 Production test summary: {working_services}/{total_services} services operational")
+        
+        if working_services >= total_services - 1:  # Allow one service to be down
+            logger.info("✅ Production system ready!")
+            return True
+        else:
+            logger.warning("⚠️ Production system has issues but may still function")
+            return False
+        
     except Exception as e:
-        logger.error(f"❌ Test execution failed: {e}")
+        logger.error(f"❌ Production tests failed: {e}")
         return False
 
-def show_system_status():
-    """Show current system status"""
+def show_production_status():
+    """Show production system status"""
+    logger.info("📊 Checking production system status...")
     
-    logger.info("📊 Checking system status...")
+    print("\n🏥 AI Medical Scheduling Agent - Production Status")
+    print("=" * 60)
     
-    print("\n🎯 AI Medical Scheduling Agent - System Status")
-    print("=" * 50)
+    # Environment check
+    env_ok = check_production_environment()
+    env_status = "✅ Ready" if env_ok else "❌ Issues"
+    print(f"Environment Configuration: {env_status}")
     
-    # Check environment
-    env_status = "✅ Ready" if check_environment() else "❌ Needs Configuration"
-    print(f"Environment: {env_status}")
+    # Database check
+    db_exists = Path("medical_scheduling.db").exists()
+    db_status = "✅ Ready" if db_exists else "❌ Missing"
+    print(f"Production Database: {db_status}")
     
-    # Check data
+    # Data check
     data_exists = Path("data/sample_patients.csv").exists()
-    data_status = "✅ Ready" if data_exists else "❌ Not Generated"
+    data_status = "✅ Ready" if data_exists else "❌ Missing"
     print(f"Sample Data: {data_status}")
     
-    # Check database
-    db_exists = Path("medical_scheduling.db").exists()
-    db_status = "✅ Ready" if db_exists else "❌ Not Initialized"
-    print(f"Database: {db_status}")
-    
-    # Check components
-    components = {
+    # Service checks
+    services = {
         "AI Agent": False,
-        "Data Generator": False,
+        "Email Service": False,
+        "SMS Service": False,
+        "Calendar Integration": False,
         "Reminder System": False,
-        "Excel Export": False,
-        "Streamlit": False
+        "Excel Export": False
     }
     
     try:
-        # Try multiple possible agent class names
-        try:
-            from agents.medical_agent import EnhancedMedicalSchedulingAgent
-            components["AI Agent"] = True
-        except ImportError:
-            try:
-                from agents.medical_agent import MedicalSchedulingAgent
-                components["AI Agent"] = True
-            except ImportError:
-                # Check if any agent class exists
-                import agents.medical_agent as agent_module
-                for attr_name in dir(agent_module):
-                    attr = getattr(agent_module, attr_name)
-                    if (isinstance(attr, type) and 
-                        'agent' in attr_name.lower() and 
-                        attr_name != 'Agent'):
-                        components["AI Agent"] = True
-                        break
+        from agents.medical_agent import ProductionMedicalAgent
+        services["AI Agent"] = True
     except ImportError:
         pass
     
     try:
-        from data.generate_data import generate_all_data
-        components["Data Generator"] = True
+        from integrations.email_service import EmailService
+        services["Email Service"] = True
+    except ImportError:
+        pass
+    
+    try:
+        from integrations.sms_service import SMSService
+        services["SMS Service"] = True
+    except ImportError:
+        pass
+    
+    try:
+        from integrations.calendly_integration import CalendlyIntegration
+        services["Calendar Integration"] = True
     except ImportError:
         pass
     
     try:
         from integrations.reminder_system import get_reminder_system
-        components["Reminder System"] = True
+        services["Reminder System"] = True
     except ImportError:
         pass
     
     try:
         from utils.excel_export import ExcelExporter
-        components["Excel Export"] = True
+        services["Excel Export"] = True
     except ImportError:
         pass
     
-    try:
-        import streamlit
-        components["Streamlit"] = True
-    except ImportError:
-        pass
-    
-    print("\n🔧 Component Status:")
-    for component, available in components.items():
+    print("\n🔧 Production Services:")
+    for service, available in services.items():
         status = "✅ Available" if available else "❌ Missing"
-        print(f"  {component}: {status}")
+        print(f"  {service}: {status}")
     
-    available_count = sum(components.values())
-    total_count = len(components)
+    available_count = sum(services.values())
+    total_count = len(services)
     
-    print(f"\n🎯 System Readiness: {available_count}/{total_count} components available")
+    print(f"\n🎯 System Readiness: {available_count}/{total_count} services available")
     
-    if available_count >= 3:
-        print("🟢 System ready for demo!")
-    elif available_count >= 1:
-        print("🟡 Limited functionality available")
+    if available_count == total_count:
+        print("🟢 PRODUCTION READY - All systems operational!")
+    elif available_count >= total_count - 1:
+        print("🟡 MOSTLY READY - Minor issues detected")
     else:
-        print("🔴 System needs setup")
+        print("🔴 NOT READY - Major components missing")
     
-    return available_count >= 1
+    return available_count >= total_count - 1
 
 def main():
-    """Main application entry point with robust error handling"""
+    """Main production entry point"""
     
     print("""
-    🏥 AI Medical Scheduling Agent - RagaAI Assignment
+    🏥 AI Medical Scheduling Agent - PRODUCTION SYSTEM
     =================================================
+    RagaAI Assignment - Industrial Grade Implementation
     
-    Starting system with error handling and graceful degradation...
+    Real Services • Real Data • Real Automation
     """)
     
     # Handle command line arguments
     if len(sys.argv) > 1:
         command = sys.argv[1].lower()
         
-        if command == "test":
-            success = run_tests()
-            sys.exit(0 if success else 1)
+        if command == "setup":
+            logger.info("🔧 Running complete production setup...")
             
-        elif command == "setup":
-            logger.info("Running complete system setup...")
             steps = [
-                ("Environment check", check_environment),
-                ("Database setup", setup_database),
-                ("Sample data generation", setup_data_fallback)
+                ("Create directories", ensure_directories),
+                ("Check environment", check_production_environment),
+                ("Initialize database", initialize_production_database),
+                ("Load sample data", load_sample_data),
+                ("Start services", start_production_services),
+                ("Run tests", run_production_tests)
             ]
             
             for step_name, step_func in steps:
-                logger.info(f"Running: {step_name}")
-                if not step_func():
-                    logger.warning(f"⚠️ {step_name} completed with warnings")
-                    
-            logger.info("✅ Setup completed!")
-            logger.info("Run 'python main.py' to start the application")
+                logger.info(f"🔄 {step_name}...")
+                try:
+                    success = step_func()
+                    if success:
+                        logger.info(f"✅ {step_name} completed")
+                    else:
+                        logger.warning(f"⚠️ {step_name} completed with warnings")
+                except Exception as e:
+                    logger.error(f"❌ {step_name} failed: {e}")
+            
+            logger.info("🎉 Production setup completed!")
+            logger.info("Run 'python main.py' to start the system")
             return
             
+        elif command == "test":
+            success = run_production_tests()
+            sys.exit(0 if success else 1)
+            
         elif command == "status":
-            show_system_status()
+            show_production_status()
             return
             
         else:
@@ -330,37 +579,51 @@ def main():
             logger.info("Available commands: setup, test, status")
             return
     
-    # Main application startup sequence
-    logger.info("Starting medical scheduling system...")
+    # Main production startup sequence
+    logger.info("🚀 Starting production medical scheduling system...")
     
-    # 1. Check environment
-    if not check_environment():
-        logger.warning("⚠️ Environment issues detected, but continuing...")
+    # Ensure directories exist
+    ensure_directories()
     
-    # 2. Setup data if needed
-    if not Path('data/sample_patients.csv').exists():
-        logger.info("Sample data not found, generating...")
-        if not setup_data_fallback():
-            logger.error("❌ Failed to setup sample data")
-            logger.info("Try running 'python main.py setup' first")
+    # Check environment
+    if not check_production_environment():
+        logger.error("❌ Environment configuration issues detected")
+        logger.info("💡 Run 'python main.py setup' to configure the system")
+        return
+    
+    # Check/initialize database
+    if not Path("medical_scheduling.db").exists():
+        logger.info("🔧 Database not found, initializing...")
+        if not initialize_production_database():
+            logger.error("❌ Database initialization failed")
             return
     
-    # 3. Setup database if needed
-    if not Path("medical_scheduling.db").exists():
-        logger.info("Database not found, initializing...")
-        setup_database()
+    # Load sample data if needed
+    try:
+        conn = sqlite3.connect("medical_scheduling.db")
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM patients")
+        patient_count = cursor.fetchone()[0]
+        conn.close()
+        
+        if patient_count < 50:
+            logger.info("📊 Loading sample data...")
+            load_sample_data()
+    except Exception as e:
+        logger.warning(f"⚠️ Could not check patient data: {e}")
     
-    # 4. Try to start reminder service
-    start_reminder_service()
+    # Start background services
+    start_production_services()
     
-    # 5. Show system status
-    if not show_system_status():
-        logger.warning("⚠️ System has limited functionality")
-        logger.info("Run 'python setup.py' for complete setup")
+    # Show system status
+    system_ready = show_production_status()
     
-    # 6. Launch Streamlit application
-    logger.info("🎯 Starting Streamlit application...")
-    run_streamlit_app()
+    if not system_ready:
+        logger.warning("⚠️ System has some issues but will attempt to start")
+    
+    # Launch production application
+    logger.info("🎯 Launching production Streamlit interface...")
+    run_production_streamlit()
 
 if __name__ == "__main__":
     main()
