@@ -196,6 +196,33 @@ def find_earliest_across_locations(symptom: str = None) -> str:
         })
     
     return json.dumps({"status": "no_slots", "message": "No appointments available today. Would you like me to check tomorrow?"})
+# In agents/medical_agent.py - Add an insurance collection tool:
+
+@tool
+def collect_insurance_information(carrier: str, member_id: str, group_number: str = "") -> str:
+    """Collect and validate patient insurance information"""
+    
+    insurance_data = {
+        "carrier": carrier,
+        "member_id": member_id, 
+        "group_number": group_number
+    }
+    
+    # Validate the insurance data
+    from utils.validators import validate_insurance_info
+    is_valid, errors = validate_insurance_info(insurance_data)
+    
+    if is_valid:
+        return json.dumps({
+            "status": "insurance_collected",
+            "message": f"Insurance information recorded: {carrier}, Member ID: {member_id}",
+            "data": insurance_data
+        })
+    else:
+        return json.dumps({
+            "status": "insurance_invalid", 
+            "message": f"Insurance validation errors: {', '.join(errors)}"
+        })
 @tool
 def book_earliest_appointment(patient_id: str, symptom: str = None) -> str:
     """Books the earliest available appointment for any symptom/condition."""
@@ -256,7 +283,22 @@ def book_appointment(patient_id: str, doctor: str, iso_datetime: str) -> str:
     db.create_appointment(new_appointment)
     
     # Schedule reminders
-    get_reminder_system().schedule_appointment_reminders(appointment_id, appointment_time, patient.email, patient.phone)
+    # get_reminder_system().schedule_appointment_reminders(appointment_id, appointment_time, patient.email, patient.phone)
+    # Fix in agents/medical_agent.py - book_appointment function
+# Around line 175, replace the reminder scheduling section:
+
+# Schedule reminders - FIX: Use correct patient data
+    reminder_result = get_reminder_system().schedule_appointment_reminders(
+        appointment_id,  # Use the actual appointment_id 
+        appointment_time,
+        patient.email,   # Use patient.email not patient.__dict__
+        patient.phone    # Use patient.phone not patient.__dict__
+    )
+
+    if reminder_result:
+        logger.info(f"✅ Reminders scheduled for appointment {appointment_id}")
+    else:
+        logger.error(f"❌ Failed to schedule reminders for {appointment_id}")
     
     # Build success message
     success_message = f"Perfect! I've successfully booked your appointment:\n\n"
@@ -265,6 +307,11 @@ def book_appointment(patient_id: str, doctor: str, iso_datetime: str) -> str:
     success_message += f"👨‍⚕️ Doctor: {doctor}\n"
     success_message += f"🏥 Location: Main Clinic\n"
     success_message += f"⏱️ Duration: {duration} minutes\n\n"
+    success_message += f"📋 Next step: I need your insurance information to complete the booking.\n\n"
+    success_message += f"Please provide:\n"
+    success_message += f"• Insurance company/carrier name\n" 
+    success_message += f"• Member ID number\n"
+    success_message += f"• Group number (if you have one)\n\n"
     
     # Handle intake forms for new patients
     # Handle intake forms for new patients
@@ -310,7 +357,15 @@ Our clinic locations:
 2. **Present options clearly** - show available times at different locations
 3. **Let them choose** - "I found appointments at 3 locations: Main Clinic at 10 AM, Downtown at 2 PM, Suburban at 4 PM. Which works best?"
 4. **Don't block booking** - always provide appointment options, never say "I need more information"
+INSURANCE COLLECTION (REQUIRED):
+After booking an appointment, ALWAYS ask for:
+- Insurance carrier/company name
+- Member ID number  
+- Group number (if applicable)
 
+Say: "To complete your booking, I need your insurance information. What's your insurance company, member ID, and group number?"
+
+Do not confirm the appointment as complete until insurance is collected.
 CRITICAL: When user says "earliest" or "asap" - find the earliest slot across ALL locations and present the options.
 """
         self.llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.1, system_instruction=system_prompt)

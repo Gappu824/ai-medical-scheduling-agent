@@ -121,17 +121,47 @@ with tab2:
 
     col1, col2 = st.columns(2)
     
+    # Fix in ui/streamlit_app.py - Live Monitoring tab
+# Replace the reminder monitoring section:
+
+    # Fix in ui/streamlit_app.py - Replace the reminder monitoring section:
+
+# Safer approach - use only columns that definitely exist:
+
     with col1:
         st.subheader("📬 Recent Reminder Activity")
         try:
-            reminders_df = pd.read_sql("SELECT appointment_id, reminder_type, scheduled_time, sent FROM reminders ORDER BY created_at DESC LIMIT 10", sqlite3.connect("medical_scheduling.db"))
+            conn = sqlite3.connect("medical_scheduling.db")
+            
+            # Simple query using columns we know exist
+            reminders_df = pd.read_sql("""
+            SELECT 
+                appointment_id, 
+                reminder_type, 
+                scheduled_time, 
+                sent,
+                created_at
+            FROM reminders 
+            ORDER BY created_at DESC 
+            LIMIT 10
+            """, conn)
+            conn.close()
+            
             if not reminders_df.empty:
-                st.dataframe(reminders_df, use_container_width=True)
+                # Convert sent column to readable format
+                reminders_df['Status'] = reminders_df['sent'].apply(lambda x: 'Sent' if x == 1 else 'Pending')
+                
+                # Display only relevant columns
+                display_df = reminders_df[['appointment_id', 'reminder_type', 'scheduled_time', 'Status', 'created_at']]
+                
+                st.dataframe(display_df, use_container_width=True)
+                st.success(f"✅ {len(reminders_df)} reminders active in system")
             else:
-                st.info("No reminders scheduled yet. Book an appointment to see live updates.")
+                st.info("No reminders found.")
+                
         except Exception as e:
             st.error(f"Reminder monitoring error: {e}")
-    
+
     with col2:
         st.subheader("📅 Recent Appointments")
         try:
@@ -145,9 +175,9 @@ with tab2:
 
 with tab3:
     st.header("🔧 Admin Panel")
-    
+
     conn = sqlite3.connect("medical_scheduling.db")
-    
+
     st.subheader("👥 Patient Database")
     patients_df = pd.read_sql("SELECT id, first_name, last_name, dob, phone, email, patient_type FROM patients", conn)
     st.dataframe(patients_df, use_container_width=True)
@@ -232,6 +262,8 @@ with tab5:
 
     except Exception as e:
         st.error(f"Analytics error: {e}")
+# Also fix the Reminders tab (tab6) in streamlit_app.py:
+
 with tab6:
     st.header("⏰ Scheduled Reminders")
     st.markdown("View all upcoming and sent reminders.")
@@ -241,12 +273,48 @@ with tab6:
 
     try:
         conn = sqlite3.connect("medical_scheduling.db")
-        reminders_df = pd.read_sql("SELECT * FROM reminders ORDER BY scheduled_time DESC", conn)
+        
+        # Get actual column names first
+        cursor = conn.cursor()
+        cursor.execute("PRAGMA table_info(reminders)")
+        columns_info = cursor.fetchall()
+        available_columns = [col[1] for col in columns_info]
+        
+        # Query with actual column names
+        reminders_df = pd.read_sql("SELECT * FROM reminders ORDER BY created_at DESC", conn)
         conn.close()
 
         if not reminders_df.empty:
+            # Display metrics
+            col1, col2, col3, col4 = st.columns(4)
+            
+            with col1:
+                st.metric("Total Reminders", len(reminders_df))
+            with col2:
+                initial_count = len(reminders_df[reminders_df['reminder_type'] == 'initial'])
+                st.metric("Initial Reminders", initial_count)
+            with col3:
+                form_count = len(reminders_df[reminders_df['reminder_type'] == 'form_check'])
+                st.metric("Form Check Reminders", form_count)
+            with col4:
+                final_count = len(reminders_df[reminders_df['reminder_type'] == 'final_confirmation'])
+                st.metric("Final Reminders", final_count)
+            
+            # Display the data
+            st.subheader("📋 All Reminders")
             st.dataframe(reminders_df, use_container_width=True)
+            
+            # Show reminder type distribution
+            st.subheader("📊 Reminder Distribution")
+            fig = px.bar(
+                reminders_df['reminder_type'].value_counts().reset_index(), 
+                x='reminder_type', 
+                y='count',
+                title="Reminders by Type"
+            )
+            st.plotly_chart(fig, use_container_width=True)
+            
         else:
             st.info("No reminders scheduled yet. Book an appointment to create reminders.")
     except Exception as e:
-        st.error(f"Error loading reminders: {e}")        
+        st.error(f"Error loading reminders: {e}")     

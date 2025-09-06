@@ -30,28 +30,62 @@ class ReminderSystem:
         return sqlite3.connect(self.db_path, timeout=10) # Added timeout to help with locking
 
     # ... (all other methods should be modified to use self._get_db_conn())
+    # Fix in integrations/reminder_system.py - schedule_appointment_reminders function
+# Replace the entire function:
+
     def schedule_appointment_reminders(self, appointment_id: str, appointment_datetime: datetime, 
-                                 patient_email: str, patient_phone: str = None) -> bool:
+                                patient_email: str, patient_phone: str = None) -> bool:
         """Schedules the 3-tier reminders with proper status tracking."""
         conn = self._get_db_conn()
         try:
             with conn:
                 cursor = conn.cursor()
+                
+                # Create 3 reminders with proper datetime formatting
                 reminders_to_create = [
-                    {'type': 'initial', 'scheduled_time': appointment_datetime - timedelta(days=7)},
-                    {'type': 'form_check', 'scheduled_time': appointment_datetime - timedelta(hours=24)},
-                    {'type': 'final_confirmation', 'scheduled_time': appointment_datetime - timedelta(hours=2)}
+                    {
+                        'type': 'initial', 
+                        'scheduled_time': (appointment_datetime - timedelta(days=7)).isoformat(),
+                        'description': '7-day reminder'
+                    },
+                    {
+                        'type': 'form_check', 
+                        'scheduled_time': (appointment_datetime - timedelta(hours=24)).isoformat(),
+                        'description': '24-hour form check'
+                    },
+                    {
+                        'type': 'final_confirmation', 
+                        'scheduled_time': (appointment_datetime - timedelta(hours=2)).isoformat(),
+                        'description': '2-hour final confirmation'
+                    }
                 ]
+                
                 for reminder in reminders_to_create:
                     cursor.execute("""
-                    INSERT INTO reminders (appointment_id, reminder_type, scheduled_time, patient_email, patient_phone)
-                    VALUES (?, ?, ?, ?, ?)
-                    """, (appointment_id, reminder['type'], reminder['scheduled_time'].isoformat(), patient_email, patient_phone))
+                    INSERT INTO reminders (
+                        appointment_id, reminder_type, scheduled_time, 
+                        patient_email, patient_phone, sent, email_sent, sms_sent
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        appointment_id, 
+                        reminder['type'], 
+                        reminder['scheduled_time'],
+                        patient_email, 
+                        patient_phone or '', 
+                        0,  # sent = False
+                        0,  # email_sent = False  
+                        0   # sms_sent = False
+                    ))
                 
-                logger.info(f"Successfully scheduled 3 reminders for appointment {appointment_id}")
-                return True
+                # Verify the insertions
+                cursor.execute("SELECT COUNT(*) FROM reminders WHERE appointment_id = ?", (appointment_id,))
+                count = cursor.fetchone()[0]
+                
+                logger.info(f"✅ Successfully inserted {count} reminders for appointment {appointment_id}")
+                return count == 3
+                
         except sqlite3.Error as e:
-            logger.error(f"DB Error scheduling reminders for {appointment_id}: {e}")
+            logger.error(f"❌ DB Error scheduling reminders for {appointment_id}: {e}")
             return False
         finally:
             if conn:
