@@ -170,7 +170,7 @@ class DatabaseManager:
             return [{"doctor": row["doctor"], "location": row["location"]} for row in history_rows]
         finally:
             conn.close()
-
+    # Around line 139 in database.py, fix patient creation:
     def create_patient(self, patient_data: Dict) -> Optional[Patient]:
         """Creates a new patient and returns the patient object."""
         conn = self.get_connection()
@@ -183,7 +183,7 @@ class DatabaseManager:
                 """, (
                     patient_id, patient_data["first_name"], patient_data["last_name"],
                     patient_data["dob"], patient_data.get("phone", ""),
-                    patient_data.get("email", ""), PatientType.NEW.value
+                    patient_data.get("email", ""), "new"  # Explicitly set as "new"
                 ))
             return self.get_patient_by_id(patient_id)
         except sqlite3.Error as e:

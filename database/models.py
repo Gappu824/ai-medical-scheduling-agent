@@ -28,7 +28,7 @@ class Patient:
     first_name: str
     last_name: str
     dob: str
-    patient_type: PatientType
+    patient_type: str  # Changed from PatientType enum to string
     phone: Optional[str] = None
     email: Optional[str] = None
     insurance_carrier: Optional[str] = None
@@ -37,7 +37,7 @@ class Patient:
     emergency_contact_name: Optional[str] = None
     emergency_contact_phone: Optional[str] = None
     emergency_contact_relationship: Optional[str] = None
-    created_at: Optional[str] = None # FIX: Added to match database
+    created_at: Optional[str] = None
 
     @property
     def full_name(self) -> str:
@@ -46,7 +46,17 @@ class Patient:
     @property
     def appointment_duration(self) -> int:
         """Return appointment duration based on patient type"""
-        return 60 if self.patient_type == PatientType.NEW else 30
+        return 60 if self.patient_type == "new" else 30
+    
+    @property
+    def is_new_patient(self) -> bool:
+        """Check if patient is new"""
+        return self.patient_type == "new"
+    
+    @property
+    def is_returning_patient(self) -> bool:
+        """Check if patient is returning"""
+        return self.patient_type == "returning"
 
 @dataclass
 class Appointment:

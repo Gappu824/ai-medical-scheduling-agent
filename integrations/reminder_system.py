@@ -31,15 +31,12 @@ class ReminderSystem:
 
     # ... (all other methods should be modified to use self._get_db_conn())
     def schedule_appointment_reminders(self, appointment_id: str, appointment_datetime: datetime, 
-                                     patient_email: str, patient_phone: str = None) -> bool:
-        """
-        Schedules the 3-tier reminders. Now uses a dedicated DB connection.
-        """
-        conn = self._get_db_conn() # Use dedicated connection
+                                 patient_email: str, patient_phone: str = None) -> bool:
+        """Schedules the 3-tier reminders with proper status tracking."""
+        conn = self._get_db_conn()
         try:
             with conn:
                 cursor = conn.cursor()
-                # ... (rest of the scheduling logic is the same)
                 reminders_to_create = [
                     {'type': 'initial', 'scheduled_time': appointment_datetime - timedelta(days=7)},
                     {'type': 'form_check', 'scheduled_time': appointment_datetime - timedelta(hours=24)},
@@ -47,13 +44,14 @@ class ReminderSystem:
                 ]
                 for reminder in reminders_to_create:
                     cursor.execute("""
-                    INSERT INTO reminders (appointment_id, reminder_type, scheduled_time)
-                    VALUES (?, ?, ?)
-                    """, (appointment_id, reminder['type'], reminder['scheduled_time'].isoformat()))
-                logger.info(f"✅ Successfully scheduled reminders for appointment {appointment_id}")
+                    INSERT INTO reminders (appointment_id, reminder_type, scheduled_time, patient_email, patient_phone)
+                    VALUES (?, ?, ?, ?, ?)
+                    """, (appointment_id, reminder['type'], reminder['scheduled_time'].isoformat(), patient_email, patient_phone))
+                
+                logger.info(f"Successfully scheduled 3 reminders for appointment {appointment_id}")
                 return True
         except sqlite3.Error as e:
-            logger.error(f"❌ DB Error scheduling reminders for {appointment_id}: {e}")
+            logger.error(f"DB Error scheduling reminders for {appointment_id}: {e}")
             return False
         finally:
             if conn:
@@ -80,10 +78,27 @@ class ReminderSystem:
         conn = self._get_db_conn()
         try:
             with conn:
-                # ... (table creation logic is the same)
-                pass
+                cursor = conn.cursor()
+                cursor.execute("""
+                CREATE TABLE IF NOT EXISTS reminders (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    appointment_id TEXT NOT NULL,
+                    reminder_type TEXT NOT NULL CHECK(reminder_type IN ('initial', 'form_check', 'final_confirmation')),
+                    scheduled_time TEXT NOT NULL,
+                    sent BOOLEAN DEFAULT FALSE,
+                    email_sent BOOLEAN DEFAULT FALSE,
+                    sms_sent BOOLEAN DEFAULT FALSE,
+                    response_received BOOLEAN DEFAULT FALSE,
+                    response_data TEXT,
+                    attempts INTEGER DEFAULT 0,
+                    last_attempt TIMESTAMP,
+                    patient_email TEXT,
+                    patient_phone TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+                """)
         except sqlite3.Error as e:
-            logger.error(f"❌ Error initializing reminder tables: {e}")
+            logger.error(f"Error initializing reminder tables: {e}")
         finally:
             if conn:
                 conn.close()
